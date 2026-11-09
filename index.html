@@ -145,6 +145,7 @@ textarea{min-height:120px;font-size:13px;font-family:ui-monospace,Menlo,monospac
 .btn.danger{background:var(--bad-bg);color:var(--bad)}
 .btn.sm{padding:8px 12px;font-size:13px}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.quick > .btn{flex:1 1 150px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:99px;font-size:14px;font-weight:600;z-index:30;max-width:calc(100% - 32px)}
 .err{color:var(--bad);font-size:13px}
 
@@ -217,7 +218,7 @@ details[open] summary{margin-bottom:10px}
 "use strict";
 const KEY = "painel-da-grana-v1";
 const DIAS = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"];
-const ORIGENS = {proprio:"Meu dinheiro", cartao:"Meu cartão", terceiros:"Cartão de alguém"};
+const ORIGENS = {proprio:"Meu dinheiro", cartao:"Meu cartão", terceiros:"De outra pessoa"};
 const fmtBRL = new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"});
 const brl = v => fmtBRL.format(Math.round((v+Number.EPSILON)*100)/100);
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -300,6 +301,8 @@ let tab = "semana";
 let histCycleOffset = 0;
 let formTipo = "gasto";
 let formOrigem = "proprio";
+let formModo = "um";
+function inicioSemana(){ const t=today(), seg=addDays(t,-dow(t)), c=cycleOf(t,state.config.diaInicio); return seg<c.start?c.start:seg; }
 let toastTimer = null;
 let deferredPrompt = null;
 const isStandalone = () => { try{ return matchMedia("(display-mode: standalone)").matches || navigator.standalone===true; }catch(e){ return false; } };
@@ -309,11 +312,19 @@ window.addEventListener("appinstalled",()=>{ deferredPrompt=null; render(); });
 
 /* ---------- cálculos ---------- */
 const contaNoEnvelope = g => g.origem==="proprio" || g.origem==="cartao";
+// um total de vários dias é dividido igualmente entre os dias do período
+function pecas(g){
+  if(!g.ini || g.ini>=g.data) return [g];
+  const n=daysIncl(g.ini,g.data), out=[]; let d=g.ini;
+  for(let i=0;i<n;i++){ out.push({...g, data:d, valor:g.valor/n}); d=addDays(d,1); }
+  return out;
+}
+const gastosDia = () => state.gastos.flatMap(pecas);
 function sum(arr, f){ return arr.reduce((a,x)=>a+f(x),0); }
 
 function pattern(){
   const t=today();
-  const gs = state.gastos.filter(g=>contaNoEnvelope(g) && g.data<=t);
+  const gs = gastosDia().filter(g=>contaNoEnvelope(g) && g.data<=t);
   const tot=[0,0,0,0,0,0,0], cnt=[0,0,0,0,0,0,0];
   if(!gs.length) return {avg:[1,1,1,1,1,1,1], enough:false, empty:true, span:0};
   let first = gs.reduce((a,g)=>g.data<a?g.data:a, t);
@@ -329,7 +340,7 @@ function compute(refDate){
   const c = cycleOf(refDate, cfg.diaInicio);
   const inC = x => x.data>=c.start && x.data<=c.end;
   const entradas = state.entradas.filter(inC);
-  const gastos = state.gastos.filter(inC);
+  const gastos = gastosDia().filter(inC);
   const totalEnt = sum(entradas, e=>e.valor);
   const base = Math.max(0, totalEnt - (cfg.guardar||0));
   const margem = Math.min(base, cfg.margem||0);
@@ -397,12 +408,15 @@ function renderSemana(){
     html += `<div class="card muted">Hoje está fora do ciclo atual.</div>`;
   }
 
+  if(r.entradas.length){
+    html += `<div class="row quick"><button type="button" class="btn" data-act="novo-gasto">+ Registrar gasto</button><button type="button" class="btn ghost" data-act="total-semana">Lançar o total da semana</button></div>`;
+  }
   if(r.totalEnt>0){
     html += `<section class="section"><div class="sec-head"><h2>Este ciclo</h2><span class="small muted num">entrou ${brl(r.totalEnt)}</span></div>
       <div class="split num">
         <div><span class="label">Para as semanas</span><b>${brl(r.dist)}</b></div>
         <div><span class="label">Guardar</span><b>${brl(state.config.guardar||0)}</b></div>
-        <div><span class="label">Imprevistos</span><b>${brl(r.margem)}</b></div>
+        <div><span class="label">Reserva</span><b>${brl(r.margem)}</b></div>
       </div>
       <div class="weeks num">${r.weeks.map((x,i)=>{
         let st;
@@ -418,7 +432,7 @@ function renderSemana(){
   // terceiros
   const tk = Object.keys(r.terc);
   if(tk.length){
-    html += `<section class="section"><div class="sec-head"><h2>Cartão de outras pessoas</h2><span class="small muted">não sai do seu dinheiro</span></div><div class="card tp num">${tk.map(k=>{
+    html += `<section class="section"><div class="sec-head"><h2>Pago por outras pessoas</h2><span class="small muted">não sai do seu dinheiro</span></div><div class="card tp num">${tk.map(k=>{
       const v=r.terc[k], teto=(state.tetos||{})[k];
       if(teto){ const p=Math.min(100,v/teto*100), ov=v>teto;
         return `<div class="tp-row"><div class="h"><span>${esc(k)}</span><span><b>${brl(v)}</b> <span class="muted">de ${brl(teto)}</span></span></div><div class="tp-bar ${ov?"over":""}"><i style="width:${p.toFixed(1)}%"></i></div>${ov?`<span class="small" style="color:var(--bad)">Passou ${brl(v-teto)} do combinado</span>`:""}</div>`; }
@@ -448,12 +462,15 @@ function renderRegistrar(){
       <button type="button" data-tipo="entrada" aria-pressed="${!g}">Entrada</button>
     </div>
     <div class="field"><label for="f-valor">Valor</label><div class="money"><span>R$</span><input id="f-valor" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div></div>
-    <div class="field"><label for="f-desc">${g?"Com o quê?":"De onde veio?"}</label><input id="f-desc" type="text" list="dl-desc" placeholder="${g?"Ex.: lanche, Uber, mercado":"Ex.: bolsa, mesada, freela"}" autocomplete="off">
+    <div class="field"><label for="f-desc">${g?"Com o quê?":"De onde veio?"}</label><input id="f-desc" type="text" list="dl-desc" placeholder="${g?(formModo==="total"?"Ex.: gastos da semana, lanches":"Ex.: lanche, Uber, mercado"):"Ex.: bolsa, mesada, freela"}" autocomplete="off">
       <datalist id="dl-desc">${(g?descs:["Bolsa","Mesada","Pix da família","Salário","Freela"]).map(d=>`<option value="${esc(d)}">`).join("")}</datalist></div>
     ${g?`<div class="field"><label id="lb-origem">Pago com</label><div class="chips" role="group" aria-labelledby="lb-origem">${Object.entries(ORIGENS).map(([k,v])=>`<button type="button" data-origem="${k}" aria-pressed="${formOrigem===k}">${v}</button>`).join("")}</div>
-      <span class="hint">${formOrigem==="terceiros"?"Fica registrado separado e não sai do seu dinheiro da semana.":formOrigem==="cartao"?"Sai do dinheiro da semana agora, porque a fatura vai ser paga com o seu dinheiro.":"Pix, débito ou dinheiro vivo."}</span></div>
-      ${formOrigem==="terceiros"?`<div class="field"><label for="f-dono">De quem é o cartão?</label><input id="f-dono" type="text" list="dl-dono" placeholder="Ex.: Pai, Mãe" autocomplete="off"><datalist id="dl-dono">${donos.map(d=>`<option value="${esc(d)}">`).join("")}</datalist></div>`:""}`:""}
-    <div class="field"><label for="f-data">Data</label><input id="f-data" type="date" value="${today()}"></div>
+      <span class="hint">${formOrigem==="terceiros"?"Quando alguém pagou por você: o cartão dos pais, um Pix que veio só para isso, um empréstimo. Fica separado e não sai do seu dinheiro da semana.":formOrigem==="cartao"?"Sai do dinheiro da semana agora, porque a fatura vai ser paga com o seu dinheiro.":"Pix, débito ou dinheiro vivo."}</span></div>
+      ${formOrigem==="terceiros"?`<div class="field"><label for="f-dono">Quem pagou?</label><input id="f-dono" type="text" list="dl-dono" placeholder="Ex.: Pai, Mãe, tia" autocomplete="off"><datalist id="dl-dono">${donos.map(d=>`<option value="${esc(d)}">`).join("")}</datalist></div>`:""}`:""}
+    ${g?`<div class="field"><label id="lb-modo">Foi um gasto só ou o total de vários dias?</label><div class="chips" role="group" aria-labelledby="lb-modo"><button type="button" data-modo="um" aria-pressed="${formModo==="um"}">Um gasto</button><button type="button" data-modo="total" aria-pressed="${formModo==="total"}">Total de vários dias</button></div>
+      <span class="hint">${formModo==="total"?"Some tudo o que gastou no período e lance de uma vez. Exemplo: gastei R$ 150 nessa semana.":"Exemplo: um lanche, uma corrida, uma compra."}</span></div>`:""}
+    ${g&&formModo==="total"?`<div class="row" style="gap:10px;align-items:flex-start"><div class="field" style="flex:1 1 140px"><label for="f-ini">De</label><input id="f-ini" type="date" value="${inicioSemana()}"></div><div class="field" style="flex:1 1 140px"><label for="f-data">Até</label><input id="f-data" type="date" value="${today()}"></div></div>`
+      :`<div class="field"><label for="f-data">Data</label><input id="f-data" type="date" value="${today()}"></div>`}
     <div id="f-err" class="err" hidden></div>
     <button class="btn" type="submit">${g?"Registrar gasto":"Registrar entrada"}</button>
   </form>`;
@@ -471,7 +488,7 @@ function renderHistorico(){
   if(!items.length) return html + `<div class="empty">Nada registrado neste ciclo.</div>`;
   html += `<div class="row small muted"><span class="row" style="gap:6px"><i class="dot proprio"></i>Meu dinheiro</span><span class="row" style="gap:6px"><i class="dot cartao"></i>Meu cartão</span><span class="row" style="gap:6px"><i class="dot terceiros"></i>De outra pessoa</span><span class="row" style="gap:6px"><i class="dot entrada"></i>Entrada</span></div>`;
   html += Object.keys(byDay).map(d=>`<div class="day"><h3>${longDay(d)}</h3>${byDay[d].map(x=>{
-    const sub = x.tipo==="entrada" ? "Entrada" : x.origem==="terceiros" ? `Cartão de ${esc(x.dono||"outra pessoa")}` : ORIGENS[x.origem];
+    const sub = x.tipo==="entrada" ? "Entrada" : (x.origem==="terceiros" ? `Pago por ${esc(x.dono||"outra pessoa")}` : ORIGENS[x.origem]) + (x.ini && x.ini<x.data ? ` · total de ${ddmm(x.ini)} a ${ddmm(x.data)}` : "");
     return `<div class="item"><i class="dot ${x.tipo==="entrada"?"entrada":x.origem}"></i><div class="t"><div>${esc(x.desc||"Sem descrição")}</div><small>${sub}</small></div><span class="val num ${x.tipo==="entrada"?"in":""}">${x.tipo==="entrada"?"+":""}${brl(x.valor)}</span><button type="button" class="del" data-del="${x.tipo}:${x.id}" aria-label="Apagar ${esc(x.desc)}">Apagar</button></div>`;
   }).join("")}</div>`).join("");
   return html;
@@ -496,18 +513,18 @@ function renderAjustes(){
   <form id="cfg" novalidate>
     <div class="card section">
       <h2>Seu ciclo</h2>
-      <div class="field"><label for="c-dia">Dia em que o dinheiro entra</label><select id="c-dia">${Array.from({length:28},(_,i)=>i+1).map(n=>`<option value="${n}" ${n===cfg.diaInicio?"selected":""}>Dia ${n}</option>`).join("")}</select><span class="hint">O ciclo vai desse dia até a véspera dele no mês seguinte.</span></div>
-      <div class="field"><label for="c-guardar">Quanto guardar por ciclo</label><div class="money"><span>R$</span><input id="c-guardar" type="text" inputmode="decimal" value="${(cfg.guardar||0).toFixed(2).replace(".",",")}"></div><span class="hint">Fica de fora logo quando o dinheiro entra, antes de dividir pelas semanas. Pode ser zero.</span></div>
-      <div class="field"><label for="c-margem">Reserva para imprevistos</label><div class="money"><span>R$</span><input id="c-margem" type="text" inputmode="decimal" value="${(cfg.margem||0).toFixed(2).replace(".",",")}"></div><span class="hint">Um valor que fica de fora das semanas, para farmácia, conserto ou presente.</span></div>
+      <div class="field"><label for="c-dia">Dia em que o dinheiro entra</label><select id="c-dia">${Array.from({length:28},(_,i)=>i+1).map(n=>`<option value="${n}" ${n===cfg.diaInicio?"selected":""}>Dia ${n}</option>`).join("")}</select><span class="hint">O ciclo é o seu mês do dinheiro: começa no dia em que o dinheiro cai e vai até a véspera desse dia no mês seguinte. Exemplo: se cai no dia 5, o ciclo vai de 5/11 a 4/12.</span></div>
+      <div class="field"><label for="c-guardar">Quanto guardar por ciclo</label><div class="money"><span>R$</span><input id="c-guardar" type="text" inputmode="decimal" value="${(cfg.guardar||0).toFixed(2).replace(".",",")}"></div><span class="hint">É o que você separa para juntar, como uma poupança ou um porquinho. Esse valor não entra nas semanas. Pode ser zero.</span></div>
+      <div class="field"><label for="c-margem">Reserva para imprevistos</label><div class="money"><span>R$</span><input id="c-margem" type="text" inputmode="decimal" value="${(cfg.margem||0).toFixed(2).replace(".",",")}"></div><span class="hint">Reserva é um dinheiro separado que você só usa se acontecer algo fora do plano, como remédio, conserto ou uma passagem de última hora. Também não entra nas semanas. Pode ser zero.</span></div>
       <button class="btn" type="submit">Salvar ajustes</button>
     </div>
   </form>
   <div class="card section">
     <h2>Limites combinados</h2>
-    <p class="hint" style="margin:0">Para o cartão de outra pessoa, como o dos pais. É o teto por ciclo que vocês combinaram.</p>
+    <p class="hint" style="margin:0">Para o que outra pessoa paga por você, como o cartão dos pais. É o teto por ciclo que vocês combinaram.</p>
     ${tetos.length?tetos.map(([k,v])=>`<div class="row" style="justify-content:space-between"><span>${esc(k)}: <b class="num">${brl(v)}</b></span><button type="button" class="btn ghost sm" data-teto-del="${esc(k)}">Remover</button></div>`).join(""):""}
     <form id="teto" class="row" novalidate style="gap:8px;flex-direction:row;align-items:flex-end">
-      <div class="field" style="flex:1 1 120px"><label for="t-nome">De quem</label><input id="t-nome" type="text" placeholder="Ex.: Pai"></div>
+      <div class="field" style="flex:1 1 120px"><label for="t-nome">Quem paga</label><input id="t-nome" type="text" placeholder="Ex.: Pai"></div>
       <div class="field" style="flex:1 1 110px"><label for="t-valor">Limite</label><input id="t-valor" type="text" inputmode="decimal" placeholder="300,00"></div>
       <button class="btn ghost" type="submit">Adicionar</button>
     </form>
@@ -542,7 +559,7 @@ function renderInicio(){
     <li><div><b>Uma parte fica de fora</b><p>Logo de cara saem o que você quer guardar e uma reserva para imprevistos, como farmácia ou um conserto.</p></div></li>
     <li><div><b>O resto vira o dinheiro de cada semana</b><p>É como separar em envelopes, um para cada semana, de segunda a domingo. Você só precisa olhar para o da semana atual.</p></div></li>
     <li><div><b>O que sobra passa para a semana seguinte</b><p>Sobrou? Soma na próxima. Passou? A diferença sai da próxima. Nada se perde no caminho.</p></div></li>
-    <li><div><b>Cartão de outra pessoa fica à parte</b><p>Se alguém da família paga coisas no cartão dela, você registra separado, com um limite combinado se quiser.</p></div></li>
+    <li><div><b>O que outra pessoa paga fica à parte</b><p>Se alguém paga coisas por você, no cartão dela ou com um dinheiro que manda só para isso, você registra separado, com um limite combinado se quiser.</p></div></li>
   </ol>`;
   if(temEntrada){
     return html + `<button type="button" class="btn" data-tab-go="semana">Voltar para o painel</button>`;
@@ -550,11 +567,11 @@ function renderInicio(){
   return html + `
   <form id="ob" class="card" novalidate>
     <h2>Monte o seu ciclo</h2>
-    <div class="field"><label for="o-dia">Em que dia o dinheiro costuma entrar?</label><select id="o-dia">${Array.from({length:28},(_,i)=>i+1).map(n=>`<option value="${n}" ${n===cfg.diaInicio?"selected":""}>Dia ${n}</option>`).join("")}</select><span class="hint">Se vem de mais de um lugar, escolha o dia do valor principal.</span></div>
+    <div class="field"><label for="o-dia">Em que dia o dinheiro costuma entrar?</label><select id="o-dia">${Array.from({length:28},(_,i)=>i+1).map(n=>`<option value="${n}" ${n===cfg.diaInicio?"selected":""}>Dia ${n}</option>`).join("")}</select><span class="hint">O ciclo é o seu mês do dinheiro: começa no dia em que o dinheiro cai e vai até a véspera desse dia no mês seguinte. Exemplo: se cai no dia 5, o ciclo vai de 5/11 a 4/12. Se o dinheiro vem de mais de um lugar, escolha o dia do valor principal.</span></div>
     <div class="field"><label for="o-valor">Quanto entra neste ciclo, somando tudo?</label><div class="money"><span>R$</span><input id="o-valor" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div></div>
     <div class="field"><label for="o-desc">De onde vem?</label><input id="o-desc" type="text" placeholder="Ex.: bolsa e mesada" autocomplete="off"></div>
-    <div class="field"><label for="o-guardar">Quanto você quer guardar por ciclo?</label><div class="money"><span>R$</span><input id="o-guardar" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div><span class="hint">Pode deixar zero e mudar depois.</span></div>
-    <div class="field"><label for="o-margem">Quanto deixar para imprevistos?</label><div class="money"><span>R$</span><input id="o-margem" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div><span class="hint">Um valor que não entra nas semanas e fica para emergências.</span></div>
+    <div class="field"><label for="o-guardar">Quanto você quer guardar por ciclo?</label><div class="money"><span>R$</span><input id="o-guardar" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div><span class="hint">É o que você separa para juntar, como uma poupança ou um porquinho. Esse valor não entra nas semanas. Pode ser zero.</span></div>
+    <div class="field"><label for="o-margem">Quanto deixar de reserva para imprevistos?</label><div class="money"><span>R$</span><input id="o-margem" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div><span class="hint">Reserva é um dinheiro separado que você só usa se acontecer algo fora do plano, como remédio, conserto ou uma passagem de última hora. Também não entra nas semanas. Pode ser zero.</span></div>
     <div class="preview num" id="o-prev" aria-live="polite"></div>
     <div id="o-err" class="err" hidden></div>
     <button class="btn" type="submit">Começar</button>
@@ -571,8 +588,8 @@ function updatePreview(){
   const sem=Math.max(0,v-g-m), porSemana=sem*7/dias;
   if(!(v>0)){ el.innerHTML=`<span class="label">Seu dinheiro por semana</span><div class="calc">Digite quanto entra para ver o cálculo.</div>`; return; }
   el.innerHTML=`<span class="label">Seu dinheiro por semana</span><div class="big">${brl(porSemana)}</div>
-    <div class="calc"><span>Entra no ciclo <b>${brl(v)}</b></span><span>Guardar <b>− ${brl(g)}</b></span><span>Imprevistos <b>− ${brl(m)}</b></span><span>Fica para as semanas <b>${brl(sem)}</b></span><span>Ciclo de ${ddmm(c.start)} a ${ddmm(c.end)}, ${dias} dias <b>${(dias/7).toFixed(1).replace(".",",")} semanas</b></span></div>
-    ${g+m>v?`<div class="small" style="color:var(--accent)">Guardar mais imprevistos passou do que entra. Diminua um dos dois.</div>`:""}`;
+    <div class="calc"><span>Entra no ciclo <b>${brl(v)}</b></span><span>Guardar <b>− ${brl(g)}</b></span><span>Reserva para imprevistos <b>− ${brl(m)}</b></span><span>Fica para as semanas <b>${brl(sem)}</b></span><span>Ciclo de ${ddmm(c.start)} a ${ddmm(c.end)}, ${dias} dias <b>${(dias/7).toFixed(1).replace(".",",")} semanas</b></span></div>
+    ${g+m>v?`<div class="small" style="color:var(--accent)">Guardar mais reserva passou do que entra. Diminua um dos dois.</div>`:""}`;
 }
 
 function render(){
@@ -601,7 +618,12 @@ app.addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
   if(b.dataset.tabGo){ go(b.dataset.tabGo); return; }
   if(b.dataset.tipo){ formTipo=b.dataset.tipo; render(); return; }
-  if(b.dataset.origem){ const v=document.getElementById("f-valor").value, d=document.getElementById("f-desc").value, dt=document.getElementById("f-data").value; formOrigem=b.dataset.origem; render(); document.getElementById("f-valor").value=v; document.getElementById("f-desc").value=d; document.getElementById("f-data").value=dt; return; }
+  if(b.dataset.origem || b.dataset.modo){
+    const keep={}; ["f-valor","f-desc","f-dono"].forEach(id=>{ const el=document.getElementById(id); if(el) keep[id]=el.value; });
+    if(b.dataset.origem) formOrigem=b.dataset.origem; else formModo=b.dataset.modo;
+    render(); Object.entries(keep).forEach(([id,v])=>{ const el=document.getElementById(id); if(el) el.value=v; });
+    return;
+  }
   if(b.dataset.del){
     if(!b.classList.contains("confirm")){ b.classList.add("confirm"); b.textContent="Confirmar"; setTimeout(()=>{ if(b.isConnected){ b.classList.remove("confirm"); b.textContent="Apagar"; } },3000); return; }
     const [tp,id]=b.dataset.del.split(":"); const arr = tp==="entrada"?state.entradas:state.gastos;
@@ -614,6 +636,8 @@ app.addEventListener("click",e=>{
   else if(a==="ver-exemplo"){ state=exampleState(); save(); go("semana"); }
   else if(a==="ir-instalar"){ go("ajustes"); const el=document.getElementById("instalar"); if(el) el.scrollIntoView(); }
   else if(a==="instalar" && deferredPrompt){ deferredPrompt.prompt(); deferredPrompt.userChoice.then(()=>{ deferredPrompt=null; render(); }); }
+  else if(a==="novo-gasto"){ formTipo="gasto"; formModo="um"; go("registrar"); }
+  else if(a==="total-semana"){ formTipo="gasto"; formModo="total"; go("registrar"); }
   else if(a==="nova-entrada"){ formTipo="entrada"; go("registrar"); }
   else if(a==="hist-prev"){ histCycleOffset++; render(); }
   else if(a==="hist-next"){ histCycleOffset=Math.max(0,histCycleOffset-1); render(); }
@@ -648,16 +672,18 @@ app.addEventListener("submit",e=>{
     const err=document.getElementById("f-err");
     const valor=parseMoney(document.getElementById("f-valor").value);
     const desc=document.getElementById("f-desc").value.trim();
-    const data=document.getElementById("f-data").value || today();
+    let data=document.getElementById("f-data").value || today();
+    let ini = formTipo==="gasto" && formModo==="total" ? (document.getElementById("f-ini").value||data) : "";
+    if(ini && ini>data){ const x=ini; ini=data; data=x; }
     if(!(valor>0)){ err.textContent="Digite um valor maior que zero, por exemplo 12,50."; err.hidden=false; document.getElementById("f-valor").focus(); return; }
     let dono="";
-    if(formTipo==="gasto" && formOrigem==="terceiros"){ dono=document.getElementById("f-dono").value.trim(); if(!dono){ err.textContent="Diga de quem é o cartão, por exemplo Pai."; err.hidden=false; document.getElementById("f-dono").focus(); return; } }
+    if(formTipo==="gasto" && formOrigem==="terceiros"){ dono=document.getElementById("f-dono").value.trim(); if(!dono){ err.textContent="Diga quem pagou, por exemplo Pai."; err.hidden=false; document.getElementById("f-dono").focus(); return; } }
     leaveExample();
-    if(formTipo==="gasto") state.gastos.push({id:uid(), data, valor, desc, origem:formOrigem, ...(dono?{dono}:{})});
+    if(formTipo==="gasto") state.gastos.push({id:uid(), data, valor, desc, origem:formOrigem, ...(dono?{dono}:{}), ...(ini&&ini<data?{ini}:{})});
     else state.entradas.push({id:uid(), data, valor, desc});
     save();
     const msg = formTipo==="gasto" ? `Gasto de ${brl(valor)} registrado` : `Entrada de ${brl(valor)} registrada`;
-    formTipo="gasto"; go("semana"); toast(msg);
+    formTipo="gasto"; formModo="um"; go("semana"); toast(msg);
   }
   else if(f.id==="ob"){
     const err=document.getElementById("o-err");
@@ -666,7 +692,7 @@ app.addEventListener("submit",e=>{
     const g=parseMoney(document.getElementById("o-guardar").value)||0;
     const m=parseMoney(document.getElementById("o-margem").value)||0;
     if(!(v>0)){ err.textContent="Digite quanto entra neste ciclo, por exemplo 1.200,00."; err.hidden=false; document.getElementById("o-valor").focus(); return; }
-    if(g+m>v){ err.textContent="Guardar mais imprevistos não pode passar do que entra."; err.hidden=false; return; }
+    if(g+m>v){ err.textContent="Guardar mais reserva não pode passar do que entra."; err.hidden=false; return; }
     leaveExample();
     state.config.diaInicio=dia; state.config.guardar=g; state.config.margem=m;
     state.entradas.push({id:uid(), data:cycleOf(today(),dia).start, valor:v, desc:document.getElementById("o-desc").value.trim()||"Entrada do ciclo"});
