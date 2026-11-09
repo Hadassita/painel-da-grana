@@ -120,7 +120,7 @@ button{cursor:pointer}
 .tp-bar i{display:block;height:100%;background:var(--mil-2)}
 .tp-bar.over i{background:var(--bad)}
 
-.split{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.split{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
 .split div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .split div b{font-size:15px}
 
@@ -146,6 +146,17 @@ textarea{min-height:120px;font-size:13px;font-family:ui-monospace,Menlo,monospac
 .btn.sm{padding:8px 12px;font-size:13px}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .quick > .btn{flex:1 1 150px}
+.fixlist{display:flex;flex-direction:column;gap:2px;padding:6px}
+.fixo{display:flex;align-items:center;gap:12px;width:100%;border:0;background:transparent;padding:10px;border-radius:10px;text-align:left}
+.fixo:hover{background:var(--chip)}
+.fixo .n{flex:1;min-width:0}
+.fixo .ck{width:22px;height:22px;border-radius:7px;border:2px solid var(--line);display:grid;place-items:center;font-size:13px;font-weight:800;flex:0 0 22px}
+.fixo.ok .ck{background:var(--mil);border-color:var(--mil);color:var(--on-mil)}
+.fixo.ok .n{color:var(--muted);text-decoration:line-through}
+.fx{display:grid;grid-template-columns:1fr 128px auto;gap:8px;align-items:center}
+.fx .money input{font-size:17px;padding-left:40px}
+.fx .money span{font-size:15px}
+.fx-list{display:flex;flex-direction:column;gap:8px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:99px;font-size:14px;font-weight:600;z-index:30;max-width:calc(100% - 32px)}
 .err{color:var(--bad);font-size:13px}
 
@@ -197,7 +208,7 @@ details summary{cursor:pointer;font-weight:600}
 details[open] summary{margin-bottom:10px}
 .priv{font-size:13px;color:var(--muted);background:var(--chip);border-radius:12px;padding:12px 14px}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
-@media (max-width:380px){.env .big{font-size:38px}.split{grid-template-columns:1fr}}
+@media (max-width:380px){.env .big{font-size:38px}}
 </style>
 </head>
 <body>
@@ -258,7 +269,7 @@ function weeksOf(c){
 /* ---------- estado ---------- */
 let memOnly = false;
 function load(){
-  try{ const raw = localStorage.getItem(KEY); if(raw){ const s=JSON.parse(raw); if(s && s.config){ if(s.config.margem==null) s.config.margem = s.exemplo?100:0; delete s.config.margemPct; return s; } } }
+  try{ const raw = localStorage.getItem(KEY); if(raw){ const s=JSON.parse(raw); if(s && s.config){ if(s.config.margem==null) s.config.margem = s.exemplo?100:0; delete s.config.margemPct; s.fixos=s.fixos||[]; s.pagos=s.pagos||{}; return s; } } }
   catch(e){ memOnly = true; }
   return exampleState();
 }
@@ -267,11 +278,12 @@ function save(){
   catch(e){ memOnly = true; }
 }
 function freshState(){
-  return {config:{diaInicio:5, guardar:0, margem:0}, tetos:{}, entradas:[], gastos:[], exemplo:false};
+  return {config:{diaInicio:5, guardar:0, margem:0}, tetos:{}, fixos:[], pagos:{}, entradas:[], gastos:[], exemplo:false};
 }
 function exampleState(){
   const st = freshState(); st.exemplo = true; st.config.guardar = 300; st.config.margem = 100;
   st.tetos = {"Pai":300};
+  st.fixos = [{id:"fx1", nome:"Academia", valor:89.9},{id:"fx2", nome:"Plano do celular", valor:45}];
   const t = today();
   // 1 número pseudoaleatório fixo, para o exemplo não mudar a cada abertura
   let seed = 7; const rnd = () => (seed = (seed*16807)%2147483647)/2147483647;
@@ -294,6 +306,7 @@ function exampleState(){
     if(w>=4 && rnd()<0.25) st.gastos.push({id:uid(), data:d, valor:Math.round((35+rnd()*25)*100)/100, desc:"iFood", origem:"terceiros", dono:"Pai"});
     d=addDays(d,1);
   }
+  st.pagos = {[c1.start]:["fx1"]};
   return st;
 }
 let state = load();
@@ -342,7 +355,8 @@ function compute(refDate){
   const entradas = state.entradas.filter(inC);
   const gastos = gastosDia().filter(inC);
   const totalEnt = sum(entradas, e=>e.valor);
-  const base = Math.max(0, totalEnt - (cfg.guardar||0));
+  const totalFixos = sum(state.fixos||[], f=>f.valor);
+  const base = Math.max(0, totalEnt - (cfg.guardar||0) - totalFixos);
   const margem = Math.min(base, cfg.margem||0);
   const dist = base - margem;
   const totalDias = daysIncl(c.start,c.end);
@@ -358,7 +372,7 @@ function compute(refDate){
   const terc = {};
   gastos.filter(g=>g.origem==="terceiros").forEach(g=>{ const k=(g.dono||"Sem nome").trim()||"Sem nome"; terc[k]=(terc[k]||0)+g.valor; });
   Object.keys(state.tetos||{}).forEach(k=>{ if(!(k in terc)) terc[k]=0; });
-  return {c, entradas, gastos, totalEnt, base, margem, dist, weeks, curIdx, proprio, cartao, terc};
+  return {c, entradas, gastos, totalEnt, totalFixos, base, margem, dist, weeks, curIdx, proprio, cartao, terc};
 }
 
 /* ---------- interface ---------- */
@@ -417,6 +431,7 @@ function renderSemana(){
         <div><span class="label">Para as semanas</span><b>${brl(r.dist)}</b></div>
         <div><span class="label">Guardar</span><b>${brl(state.config.guardar||0)}</b></div>
         <div><span class="label">Reserva</span><b>${brl(r.margem)}</b></div>
+        <div><span class="label">Gastos fixos</span><b>${brl(r.totalFixos)}</b></div>
       </div>
       <div class="weeks num">${r.weeks.map((x,i)=>{
         let st;
@@ -429,6 +444,13 @@ function renderSemana(){
     </section>`;
   }
 
+  // gastos fixos: checklist do ciclo
+  if((state.fixos||[]).length){
+    const pagos=(state.pagos||{})[r.c.start]||[], np=state.fixos.filter(f=>pagos.includes(f.id)).length;
+    html += `<section class="section"><div class="sec-head"><h2>Gastos fixos</h2><span class="small muted num">${np} de ${state.fixos.length} pagos</span></div>
+      <div class="card fixlist">${state.fixos.map(f=>{ const ok=pagos.includes(f.id); return `<button type="button" class="fixo ${ok?"ok":""}" data-pago="${f.id}" aria-pressed="${ok}"><span class="ck" aria-hidden="true">${ok?"✓":""}</span><span class="n">${esc(f.nome)}</span><b class="num">${brl(f.valor)}</b></button>`; }).join("")}</div>
+      <p class="hint" style="margin:0">Já foram descontados antes de dividir pelas semanas. Toque para marcar quando pagar: isso não mexe no dinheiro da semana.</p></section>`;
+  }
   // terceiros
   const tk = Object.keys(r.terc);
   if(tk.length){
@@ -471,6 +493,7 @@ function renderRegistrar(){
       <span class="hint">${formModo==="total"?"Some tudo o que gastou no período e lance de uma vez. Exemplo: gastei R$ 150 nessa semana.":"Exemplo: um lanche, uma corrida, uma compra."}</span></div>`:""}
     ${g&&formModo==="total"?`<div class="row" style="gap:10px;align-items:flex-start"><div class="field" style="flex:1 1 140px"><label for="f-ini">De</label><input id="f-ini" type="date" value="${inicioSemana()}"></div><div class="field" style="flex:1 1 140px"><label for="f-data">Até</label><input id="f-data" type="date" value="${today()}"></div></div>`
       :`<div class="field"><label for="f-data">Data</label><input id="f-data" type="date" value="${today()}"></div>`}
+    ${g?`<p class="hint" style="margin:0">Aluguel, academia e outras contas fixas não entram aqui. Cadastre em Ajustes, em Gastos fixos, e marque como pago na tela da semana.</p>`:""}
     <div id="f-err" class="err" hidden></div>
     <button class="btn" type="submit">${g?"Registrar gasto":"Registrar entrada"}</button>
   </form>`;
@@ -520,6 +543,16 @@ function renderAjustes(){
     </div>
   </form>
   <div class="card section">
+    <h2>Gastos fixos</h2>
+    <p class="hint" style="margin:0">Contas que se repetem todo ciclo com valor parecido e saem do seu dinheiro: aluguel, internet, academia, assinaturas. Elas são descontadas antes de dividir pelas semanas, então pagar o aluguel não estoura a semana. Se outra pessoa paga a conta, não coloque aqui.</p>
+    ${(state.fixos||[]).map(f=>`<div class="row" style="justify-content:space-between"><span>${esc(f.nome)}: <b class="num">${brl(f.valor)}</b></span><button type="button" class="btn ghost sm" data-fixo-del="${f.id}">Remover</button></div>`).join("")}
+    <form id="fixo" class="row" novalidate style="gap:8px;flex-direction:row;align-items:flex-end">
+      <div class="field" style="flex:1 1 120px"><label for="fx-nome">Conta</label><input id="fx-nome" type="text" placeholder="Ex.: aluguel"></div>
+      <div class="field" style="flex:1 1 110px"><label for="fx-valor">Valor por ciclo</label><input id="fx-valor" type="text" inputmode="decimal" placeholder="500,00"></div>
+      <button class="btn ghost" type="submit">Adicionar</button>
+    </form>
+  </div>
+  <div class="card section">
     <h2>Limites combinados</h2>
     <p class="hint" style="margin:0">Para o que outra pessoa paga por você, como o cartão dos pais. É o teto por ciclo que vocês combinaram.</p>
     ${tetos.length?tetos.map(([k,v])=>`<div class="row" style="justify-content:space-between"><span>${esc(k)}: <b class="num">${brl(v)}</b></span><button type="button" class="btn ghost sm" data-teto-del="${esc(k)}">Remover</button></div>`).join(""):""}
@@ -556,7 +589,7 @@ function renderInicio(){
   <p class="intro">Você divide o que entra no mês entre as semanas. Assim, todo dia dá pra ver quanto ainda pode gastar até domingo, sem fazer conta.</p>
   <ol class="how" style="margin:0;padding:0">
     <li><div><b>O dinheiro entra e começa o seu ciclo</b><p>Bolsa, mesada, salário. O ciclo vai do dia em que o dinheiro cai até a véspera desse dia no mês seguinte, e não do dia 1 ao 30.</p></div></li>
-    <li><div><b>Uma parte fica de fora</b><p>Logo de cara saem o que você quer guardar e uma reserva para imprevistos, como farmácia ou um conserto.</p></div></li>
+    <li><div><b>Uma parte fica de fora</b><p>Logo de cara saem os gastos fixos (aluguel, academia, assinaturas), o que você quer guardar e uma reserva para imprevistos, como farmácia ou um conserto.</p></div></li>
     <li><div><b>O resto vira o dinheiro de cada semana</b><p>É como separar em envelopes, um para cada semana, de segunda a domingo. Você só precisa olhar para o da semana atual.</p></div></li>
     <li><div><b>O que sobra passa para a semana seguinte</b><p>Sobrou? Soma na próxima. Passou? A diferença sai da próxima. Nada se perde no caminho.</p></div></li>
     <li><div><b>O que outra pessoa paga fica à parte</b><p>Se alguém paga coisas por você, no cartão dela ou com um dinheiro que manda só para isso, você registra separado, com um limite combinado se quiser.</p></div></li>
@@ -572,24 +605,29 @@ function renderInicio(){
     <div class="field"><label for="o-desc">De onde vem?</label><input id="o-desc" type="text" placeholder="Ex.: bolsa e mesada" autocomplete="off"></div>
     <div class="field"><label for="o-guardar">Quanto você quer guardar por ciclo?</label><div class="money"><span>R$</span><input id="o-guardar" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div><span class="hint">É o que você separa para juntar, como uma poupança ou um porquinho. Esse valor não entra nas semanas. Pode ser zero.</span></div>
     <div class="field"><label for="o-margem">Quanto deixar de reserva para imprevistos?</label><div class="money"><span>R$</span><input id="o-margem" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div><span class="hint">Reserva é um dinheiro separado que você só usa se acontecer algo fora do plano, como remédio, conserto ou uma passagem de última hora. Também não entra nas semanas. Pode ser zero.</span></div>
+    <div class="field"><label>Você tem gastos fixos?</label><span class="hint">Contas que se repetem todo ciclo com valor parecido e saem do seu dinheiro: aluguel, internet, academia, assinaturas. Elas são descontadas antes de dividir pelas semanas, então pagar o aluguel não estoura a semana. Se outra pessoa paga a conta, não coloque aqui.</span><div id="o-fixos" class="fx-list"></div><div><button type="button" class="btn ghost sm" data-act="o-add-fixo">+ Adicionar gasto fixo</button></div></div>
     <div class="preview num" id="o-prev" aria-live="polite"></div>
     <div id="o-err" class="err" hidden></div>
     <button class="btn" type="submit">Começar</button>
     <button class="btn ghost" type="button" data-tab-go="semana">Pular por enquanto</button>
   </form>`;
 }
+let fxSeq=0;
+function linhaFixo(){ fxSeq++; return `<div class="fx"><input type="text" id="o-fx-n${fxSeq}" class="fx-nome" placeholder="Ex.: academia" aria-label="Nome do gasto fixo" autocomplete="off"><div class="money"><span>R$</span><input type="text" id="o-fx-v${fxSeq}" class="fx-valor" inputmode="decimal" placeholder="0,00" aria-label="Valor do gasto fixo" autocomplete="off"></div><button type="button" class="btn ghost sm" data-act="o-del-fixo">Remover</button></div>`; }
+function lerFixosOb(){ return [...document.querySelectorAll("#o-fixos .fx")].map(row=>({nome:row.querySelector(".fx-nome").value.trim(), valor:parseMoney(row.querySelector(".fx-valor").value)||0})).filter(f=>f.valor>0); }
 function updatePreview(){
   const el=document.getElementById("o-prev"); if(!el) return;
   const dia=Number(document.getElementById("o-dia").value)||5;
   const v=parseMoney(document.getElementById("o-valor").value)||0;
   const g=parseMoney(document.getElementById("o-guardar").value)||0;
   const m=parseMoney(document.getElementById("o-margem").value)||0;
+  const fx=lerFixosOb().reduce((a,f)=>a+f.valor,0);
   const c=cycleOf(today(),dia), dias=daysIncl(c.start,c.end);
-  const sem=Math.max(0,v-g-m), porSemana=sem*7/dias;
+  const sem=Math.max(0,v-g-m-fx), porSemana=sem*7/dias;
   if(!(v>0)){ el.innerHTML=`<span class="label">Seu dinheiro por semana</span><div class="calc">Digite quanto entra para ver o cálculo.</div>`; return; }
   el.innerHTML=`<span class="label">Seu dinheiro por semana</span><div class="big">${brl(porSemana)}</div>
-    <div class="calc"><span>Entra no ciclo <b>${brl(v)}</b></span><span>Guardar <b>− ${brl(g)}</b></span><span>Reserva para imprevistos <b>− ${brl(m)}</b></span><span>Fica para as semanas <b>${brl(sem)}</b></span><span>Ciclo de ${ddmm(c.start)} a ${ddmm(c.end)}, ${dias} dias <b>${(dias/7).toFixed(1).replace(".",",")} semanas</b></span></div>
-    ${g+m>v?`<div class="small" style="color:var(--accent)">Guardar mais reserva passou do que entra. Diminua um dos dois.</div>`:""}`;
+    <div class="calc"><span>Entra no ciclo <b>${brl(v)}</b></span><span>Gastos fixos <b>− ${brl(fx)}</b></span><span>Guardar <b>− ${brl(g)}</b></span><span>Reserva para imprevistos <b>− ${brl(m)}</b></span><span>Fica para as semanas <b>${brl(sem)}</b></span><span>Ciclo de ${ddmm(c.start)} a ${ddmm(c.end)}, ${dias} dias <b>${(dias/7).toFixed(1).replace(".",",")} semanas</b></span></div>
+    ${g+m+fx>v?`<div class="small" style="color:var(--accent)">Gastos fixos, guardar e reserva somados passam do que entra. Diminua algum deles.</div>`:""}`;
 }
 
 function render(){
@@ -629,11 +667,19 @@ app.addEventListener("click",e=>{
     const [tp,id]=b.dataset.del.split(":"); const arr = tp==="entrada"?state.entradas:state.gastos;
     const i=arr.findIndex(x=>x.id===id); if(i>-1) arr.splice(i,1); save(); render(); toast("Registro apagado"); return;
   }
+  if(b.dataset.pago){
+    const k=cycleOf(today(),state.config.diaInicio).start; state.pagos=state.pagos||{}; const arr=state.pagos[k]=state.pagos[k]||[];
+    const i=arr.indexOf(b.dataset.pago); if(i>-1) arr.splice(i,1); else arr.push(b.dataset.pago);
+    save(); render(); return;
+  }
+  if(b.dataset.fixoDel){ state.fixos=(state.fixos||[]).filter(f=>f.id!==b.dataset.fixoDel); save(); render(); toast("Gasto fixo removido"); return; }
   if(b.dataset.tetoDel!=null){ delete state.tetos[b.dataset.tetoDel]; save(); render(); toast("Limite removido"); return; }
   const a=b.dataset.act;
   if(a==="zerar"){ state=freshState(); save(); go("inicio"); }
   else if(a==="como"){ go("inicio"); }
   else if(a==="ver-exemplo"){ state=exampleState(); save(); go("semana"); }
+  else if(a==="o-add-fixo"){ const box=document.getElementById("o-fixos"); box.insertAdjacentHTML("beforeend", linhaFixo()); box.lastElementChild.querySelector(".fx-nome").focus(); }
+  else if(a==="o-del-fixo"){ b.closest(".fx").remove(); updatePreview(); }
   else if(a==="ir-instalar"){ go("ajustes"); const el=document.getElementById("instalar"); if(el) el.scrollIntoView(); }
   else if(a==="instalar" && deferredPrompt){ deferredPrompt.prompt(); deferredPrompt.userChoice.then(()=>{ deferredPrompt=null; render(); }); }
   else if(a==="novo-gasto"){ formTipo="gasto"; formModo="um"; go("registrar"); }
@@ -656,7 +702,7 @@ function restore(txt){
   try{
     const s=JSON.parse(txt);
     if(!s || !s.config || !Array.isArray(s.gastos) || !Array.isArray(s.entradas)) throw new Error();
-    s.tetos=s.tetos||{}; s.exemplo=false; state=s; save(); go("semana"); toast("Backup restaurado");
+    s.tetos=s.tetos||{}; s.fixos=s.fixos||[]; s.pagos=s.pagos||{}; s.exemplo=false; state=s; save(); go("semana"); toast("Backup restaurado");
   }catch(err){ toast("Esse texto não é um backup do Painel da Grana"); }
 }
 app.addEventListener("input",e=>{ if(e.target.closest("#ob")) updatePreview(); });
@@ -692,9 +738,11 @@ app.addEventListener("submit",e=>{
     const g=parseMoney(document.getElementById("o-guardar").value)||0;
     const m=parseMoney(document.getElementById("o-margem").value)||0;
     if(!(v>0)){ err.textContent="Digite quanto entra neste ciclo, por exemplo 1.200,00."; err.hidden=false; document.getElementById("o-valor").focus(); return; }
-    if(g+m>v){ err.textContent="Guardar mais reserva não pode passar do que entra."; err.hidden=false; return; }
+    const fixos=lerFixosOb();
+    if(g+m+fixos.reduce((a,f)=>a+f.valor,0)>v){ err.textContent="Gastos fixos, guardar e reserva somados não podem passar do que entra."; err.hidden=false; return; }
     leaveExample();
     state.config.diaInicio=dia; state.config.guardar=g; state.config.margem=m;
+    state.fixos=fixos.map((f,i)=>({id:uid(), nome:f.nome||`Gasto fixo ${i+1}`, valor:f.valor}));
     state.entradas.push({id:uid(), data:cycleOf(today(),dia).start, valor:v, desc:document.getElementById("o-desc").value.trim()||"Entrada do ciclo"});
     save(); go("semana"); toast("Ciclo montado. Agora é só registrar os gastos.");
   }
@@ -705,6 +753,11 @@ app.addEventListener("submit",e=>{
     state.config.guardar= g>=0 ? g : 0;
     state.config.margem= m>=0 ? m : 0;
     save(); render(); toast("Ajustes salvos");
+  }
+  else if(f.id==="fixo"){
+    const n=document.getElementById("fx-nome").value.trim(), v=parseMoney(document.getElementById("fx-valor").value);
+    if(!n || !(v>0)){ toast("Preencha o nome da conta e o valor"); return; }
+    leaveExample(); state.fixos=state.fixos||[]; state.fixos.push({id:uid(), nome:n, valor:v}); save(); render(); toast("Gasto fixo adicionado");
   }
   else if(f.id==="teto"){
     const n=document.getElementById("t-nome").value.trim(), v=parseMoney(document.getElementById("t-valor").value);
