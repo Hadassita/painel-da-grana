@@ -26,6 +26,7 @@
   --mil:#56653A; --mil-2:#67784A; --on-mil:#FFFFFF; --on-mil-muted:#D6DFBF;
   --accent:#F4C542; --accent-ink:#2A2100;
   --ok:#23784F; --ok-bg:#D9EFDF; --warn:#946000; --warn-bg:#FAEBC8; --bad:#B4382C; --bad-bg:#F7DDD8;
+  --pote:#8A4677; --pote-bg:#F3E6EF; --on-pote:#FFFFFF; --knob:#FFFFFF;
   --f-display:"Bricolage Grotesque","Inter",system-ui,sans-serif;
   --f-body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
   --r:16px;
@@ -35,6 +36,7 @@
   --mil:#4B5932; --mil-2:#5C6D3E; --on-mil:#FFFFFF; --on-mil-muted:#CDD7B1;
   --accent:#F4C542; --accent-ink:#2A2100;
   --ok:#58C48C; --ok-bg:#16301F; --warn:#E9AE4A; --warn-bg:#3A2C0E; --bad:#F07A6E; --bad-bg:#3D1C18;
+  --pote:#E3A0CE; --pote-bg:#2F1D2A; --on-pote:#2A0F22;
   color-scheme:dark;
 }}
 :root[data-theme="dark"]{
@@ -42,6 +44,7 @@
   --mil:#4B5932; --mil-2:#5C6D3E; --on-mil:#FFFFFF; --on-mil-muted:#CDD7B1;
   --accent:#F4C542; --accent-ink:#2A2100;
   --ok:#58C48C; --ok-bg:#16301F; --warn:#E9AE4A; --warn-bg:#3A2C0E; --bad:#F07A6E; --bad-bg:#3D1C18;
+  --pote:#E3A0CE; --pote-bg:#2F1D2A; --on-pote:#2A0F22;
   color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -203,6 +206,29 @@ textarea{min-height:120px;font-size:13px;font-family:ui-monospace,Menlo,monospac
 .preview .calc span{display:flex;justify-content:space-between;gap:8px}
 .preview .calc b{color:var(--on-mil);font-weight:600}
 .intro{margin:0;color:var(--muted);font-size:15px}
+/* pote do casal */
+.ttl{display:flex;align-items:center;gap:8px}
+.pote-ic{width:24px;height:24px;color:var(--pote);flex:0 0 24px}
+.pote-card{background:var(--pote-bg);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:10px}
+.pote-big{font-family:var(--f-display);font-weight:800;font-size:32px;line-height:1;color:var(--pote)}
+.pote-big.over{color:var(--bad)}
+.pote-bar{height:10px;border-radius:99px;background:var(--surface);overflow:hidden}
+.pote-bar i{display:block;height:100%;background:var(--pote);border-radius:99px}
+.pote-rows{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.pote-rows b{color:var(--ink);font-weight:600}
+.pote-alert{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:8px 12px;font-size:13.5px;font-weight:600}
+.pote-alert.bad{background:var(--bad-bg);color:var(--bad)}
+.pote-calc{background:var(--pote-bg);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px}
+.pote-calc .pote-big{font-size:26px}
+.btn.pote{background:var(--pote);color:var(--on-pote)}
+.dot.pote{background:var(--pote)}
+.panel{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:12px;background:var(--bg)}
+.panel .btn{text-align:left}
+.switch{position:relative;width:48px;height:28px;border-radius:99px;border:0;background:var(--line);flex:0 0 48px;padding:0}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:var(--knob);box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .15s}
+.switch[aria-checked="true"]{background:var(--pote)}
+.switch[aria-checked="true"]::after{transform:translateX(20px)}
+.split.odd > div:first-child{grid-column:1/-1}
 details{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 16px}
 details summary{cursor:pointer;font-weight:600}
 details[open] summary{margin-bottom:10px}
@@ -229,9 +255,12 @@ details[open] summary{margin-bottom:10px}
 "use strict";
 const KEY = "painel-da-grana-v1";
 const DIAS = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"];
-const ORIGENS = {proprio:"Meu dinheiro", cartao:"Meu cartão", terceiros:"De outra pessoa"};
+const ORIGENS = {proprio:"Meu dinheiro", cartao:"Meu cartão", terceiros:"De outra pessoa", pote:"Pote do casal"};
 const fmtBRL = new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"});
 const brl = v => fmtBRL.format(Math.round((v+Number.EPSILON)*100)/100);
+const r2 = v => Math.round((v+Number.EPSILON)*100)/100;
+const ICON_POTE = '<svg class="pote-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/></svg>';
+const POTE_EXPLICA = "O pote é um dinheiro separado só pro que vocês fazem juntos: comida, cinema, passeio, delivery. Você diz quanto querem gastar por semana e o app separa tudo de uma vez quando o seu dinheiro entra. O que for pago pelo pote não sai do seu dinheiro da semana.";
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const uid = () => Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
 
@@ -269,7 +298,7 @@ function weeksOf(c){
 /* ---------- estado ---------- */
 let memOnly = false;
 function load(){
-  try{ const raw = localStorage.getItem(KEY); if(raw){ const s=JSON.parse(raw); if(s && s.config){ if(s.config.margem==null) s.config.margem = s.exemplo?100:0; delete s.config.margemPct; s.fixos=s.fixos||[]; s.pagos=s.pagos||{}; return s; } } }
+  try{ const raw = localStorage.getItem(KEY); if(raw){ const s=JSON.parse(raw); if(s && s.config){ if(s.config.margem==null) s.config.margem = s.exemplo?100:0; delete s.config.margemPct; return normalizar(s); } } }
   catch(e){ memOnly = true; }
   return exampleState();
 }
@@ -278,8 +307,11 @@ function save(){
   catch(e){ memOnly = true; }
 }
 function freshState(){
-  return {config:{diaInicio:5, guardar:0, margem:0}, tetos:{}, fixos:[], pagos:{}, entradas:[], gastos:[], exemplo:false};
+  return {config:{diaInicio:5, guardar:0, margem:0}, tetos:{}, fixos:[], pagos:{}, casal:casalPadrao(), entradas:[], gastos:[], exemplo:false};
 }
+// pote do casal: da outra pessoa, só um apelido opcional
+function casalPadrao(){ return {ativo:false, apelido:"", semanal:0, modo:"eu", sobra:"guardar", inicio:"", ciclo:"", guardado:0, descontos:{}, aviso:""}; }
+function normalizar(s){ s.tetos=s.tetos||{}; s.fixos=s.fixos||[]; s.pagos=s.pagos||{}; s.casal=Object.assign(casalPadrao(), s.casal||{}); s.casal.descontos=s.casal.descontos||{}; return s; }
 function exampleState(){
   const st = freshState(); st.exemplo = true; st.config.guardar = 300; st.config.margem = 100;
   st.tetos = {"Pai":300};
@@ -307,6 +339,8 @@ function exampleState(){
     d=addDays(d,1);
   }
   st.pagos = {[c1.start]:["fx1"]};
+  st.casal = Object.assign(casalPadrao(), {ativo:true, semanal:80, modo:"dividimos", sobra:"guardar", inicio:c1.start, ciclo:c1.start, guardado:45});
+  [[0,"Pizza",64],[3,"Cinema",46]].forEach(([n,desc,v])=>{ const d=addDays(c1.start,n); if(d<=t) st.gastos.push({id:uid(), data:d, valor:v, desc, origem:"pote"}); });
   return st;
 }
 let state = load();
@@ -315,6 +349,7 @@ let histCycleOffset = 0;
 let formTipo = "gasto";
 let formOrigem = "proprio";
 let formModo = "um";
+let poteUI = null; // "form" ao ativar, "desligar" ao desativar
 function inicioSemana(){ const t=today(), seg=addDays(t,-dow(t)), c=cycleOf(t,state.config.diaInicio); return seg<c.start?c.start:seg; }
 let toastTimer = null;
 let deferredPrompt = null;
@@ -333,6 +368,82 @@ function pecas(g){
   return out;
 }
 const gastosDia = () => state.gastos.flatMap(pecas);
+
+/* ---------- pote do casal ---------- */
+const casalAtivo = () => !!(state.casal && state.casal.ativo);
+const amor = () => (state.casal && state.casal.apelido) || "seu amor";
+const deNome = ap => ap ? "de "+ap : "do seu amor";
+// depósito único: valor por semana × semanas que faltam no ciclo (contadas em dias ÷ 7)
+function calcPote(v, c, inicio){
+  const dep = inicio && inicio > c.start ? inicio : c.start;
+  const dias = dep > c.end ? 0 : daysIncl(dep, c.end);
+  const total = r2((v.semanal||0)*dias/7);
+  const minha = v.modo==="dividimos" ? r2(total/2) : total;
+  return {dep, dias, total, minha, amor:r2(total-minha), cheio: dep===c.start};
+}
+function potCiclo(c){
+  const k=state.casal; if(!k || !k.ativo || !k.inicio) return null;
+  const p=calcPote(k, c, k.inicio); if(!p.dias) return null;
+  p.c=c; p.gastos=sum(gastosDia().filter(g=>g.origem==="pote" && g.data>=p.dep && g.data<=c.end), g=>g.valor);
+  p.saldo=p.total-p.gastos; return p;
+}
+function estadoPote(){
+  const c=cycleOf(today(), state.config.diaInicio), p=potCiclo(c); if(!p) return null;
+  const guardado=state.casal.guardado||0, t=today(), fim=t<c.end?t:c.end;
+  const diasDec = fim<p.dep ? 1 : daysIncl(p.dep, fim);
+  return {...p, guardado, base:p.total+Math.max(0,guardado), saldo:p.total+guardado-p.gastos, ritmo:p.gastos/Math.max(1,diasDec/7)};
+}
+// parte do usuário que sai do orçamento do ciclo, espalhada pelos dias desde o depósito
+function deducoesPote(c){
+  const out=[...((state.casal.descontos||{})[c.start]||[])];
+  const p=potCiclo(c); if(p && p.minha>0) out.push({desde:p.dep, valor:p.minha});
+  return out;
+}
+function descontoPoteSemana(ded, w, c){
+  return sum(ded, d=>{ const a=w.ini>d.desde?w.ini:d.desde, b=w.fim<c.end?w.fim:c.end; return a>b ? 0 : d.valor*daysIncl(a,b)/daysIncl(d.desde,c.end); });
+}
+// fecha os ciclos que já terminaram: a sobra fica guardada ou volta pro orçamento
+function fecharPote(){
+  const k=state.casal; if(!k || !k.ativo || !k.ciclo) return false;
+  const dia=state.config.diaInicio, atual=cycleOf(today(),dia).start;
+  let mudou=false, n=0;
+  while(k.ciclo < atual && n++ < 60){
+    const c=cycleOf(k.ciclo,dia), p=potCiclo(c), prox=addDays(c.end,1);
+    const s=r2((p?p.saldo:0)+(k.guardado||0));
+    if(k.sobra==="voltar" && s>0.005){
+      const frac = p && p.total>0 ? p.minha/p.total : 1, volta=r2(s*frac), parteAmor=r2(s-volta);
+      state.entradas.push({id:uid(), data:prox, valor:volta, desc:"Sobra do pote do casal"});
+      k.guardado=0;
+      k.aviso=`Sobraram ${brl(s)} no pote do ciclo passado. ${brl(volta)} voltaram pro seu dinheiro deste ciclo`+(parteAmor>0.005?` e ${brl(parteAmor)} são a parte ${deNome(k.apelido)}.`:".");
+    } else {
+      k.guardado=s;
+      k.aviso = s>0.005 ? `Sobraram ${brl(s)} no pote do ciclo passado. Eles continuam guardados no pote pra um programa maior.`
+              : s<-0.005 ? `O pote passou ${brl(-s)} no ciclo passado. Essa diferença sai do pote deste ciclo.` : "";
+    }
+    k.ciclo=prox; mudou=true;
+  }
+  return mudou;
+}
+function ativarPote(v){
+  Object.assign(state.casal, {ativo:true, apelido:v.apelido, semanal:v.semanal, modo:v.modo, sobra:v.sobra, inicio:today(), ciclo:cycleOf(today(),state.config.diaInicio).start, guardado:0, aviso:""});
+}
+function desligarPote(dest){
+  const k=state.casal, c=cycleOf(today(),state.config.diaInicio), e=estadoPote();
+  let msg="Pote do casal desativado";
+  if(e){
+    if(e.minha>0.005) (k.descontos[c.start]=k.descontos[c.start]||[]).push({desde:e.dep, valor:e.minha});
+    if(e.saldo>0.005 && dest){
+      const volta = dest==="tudo" ? r2(e.saldo) : r2(e.saldo/2);
+      state.entradas.push({id:uid(), data:today(), valor:volta, desc:"Sobra do pote do casal"});
+      msg=`Pote desativado. ${brl(volta)} voltaram pro seu orçamento`;
+    } else if(e.saldo<-0.005){
+      state.gastos.push({id:uid(), data:today(), valor:r2(-e.saldo), desc:"Gastos do casal além do pote", origem:"proprio"});
+      msg=`Pote desativado. ${brl(-e.saldo)} saíram do seu dinheiro da semana`;
+    }
+  }
+  const desc=k.descontos; state.casal=Object.assign(casalPadrao(), {descontos:desc});
+  poteUI=null; save(); render(); toast(msg);
+}
 function sum(arr, f){ return arr.reduce((a,x)=>a+f(x),0); }
 
 function pattern(){
@@ -358,11 +469,14 @@ function compute(refDate){
   const totalFixos = sum(state.fixos||[], f=>f.valor);
   const base = Math.max(0, totalEnt - (cfg.guardar||0) - totalFixos);
   const margem = Math.min(base, cfg.margem||0);
-  const dist = base - margem;
+  const ded = deducoesPote(c);
+  const totalPote = sum(ded, d=>d.valor);
+  const distBruto = base - margem;
+  const dist = distBruto - totalPote;
   const totalDias = daysIncl(c.start,c.end);
   const weeks = weeksOf(c).map(w=>{
     const gw = gastos.filter(g=>contaNoEnvelope(g) && g.data>=w.ini && g.data<=w.fim);
-    return {...w, env: dist*w.dias/totalDias, gasto: sum(gw,g=>g.valor)};
+    return {...w, env: distBruto*w.dias/totalDias - descontoPoteSemana(ded, w, c), gasto: sum(gw,g=>g.valor)};
   });
   let curIdx = weeks.findIndex(w=>t>=w.ini && t<=w.fim);
   let carry=0;
@@ -372,7 +486,7 @@ function compute(refDate){
   const terc = {};
   gastos.filter(g=>g.origem==="terceiros").forEach(g=>{ const k=(g.dono||"Sem nome").trim()||"Sem nome"; terc[k]=(terc[k]||0)+g.valor; });
   Object.keys(state.tetos||{}).forEach(k=>{ if(!(k in terc)) terc[k]=0; });
-  return {c, entradas, gastos, totalEnt, totalFixos, base, margem, dist, weeks, curIdx, proprio, cartao, terc};
+  return {c, entradas, gastos, totalEnt, totalFixos, totalPote, base, margem, dist, weeks, curIdx, proprio, cartao, terc};
 }
 
 /* ---------- interface ---------- */
@@ -392,7 +506,7 @@ function storageWarn(){
 
 function renderSemana(){
   const t=today(), r=compute(t), pat=pattern();
-  let html = header() + storageWarn() + exampleBanner();
+  let html = header() + storageWarn() + exampleBanner() + avisoPote();
 
   if(!r.entradas.length){
     html += `<div class="card section"><h2>Comece registrando o que entrou</h2><p class="muted small" style="margin:0">Bolsa, mesada, salário, Pix da família. O painel separa uma parte desse valor para cada semana, de segunda a domingo, a partir do dia ${state.config.diaInicio}.</p><div><button class="btn" type="button" data-act="nova-entrada">Registrar entrada</button></div></div>`;
@@ -425,13 +539,15 @@ function renderSemana(){
   if(r.entradas.length){
     html += `<div class="row quick"><button type="button" class="btn" data-act="novo-gasto">+ Registrar gasto</button><button type="button" class="btn ghost" data-act="total-semana">Lançar o total da semana</button></div>`;
   }
+  html += potCardHTML();
   if(r.totalEnt>0){
     html += `<section class="section"><div class="sec-head"><h2>Este ciclo</h2><span class="small muted num">entrou ${brl(r.totalEnt)}</span></div>
-      <div class="split num">
+      <div class="split num${r.totalPote>0.005?" odd":""}">
         <div><span class="label">Para as semanas</span><b>${brl(r.dist)}</b></div>
         <div><span class="label">Guardar</span><b>${brl(state.config.guardar||0)}</b></div>
         <div><span class="label">Reserva</span><b>${brl(r.margem)}</b></div>
         <div><span class="label">Gastos fixos</span><b>${brl(r.totalFixos)}</b></div>
+        ${r.totalPote>0.005?`<div><span class="label">Pote do casal</span><b>${brl(r.totalPote)}</b></div>`:""}
       </div>
       <div class="weeks num">${r.weeks.map((x,i)=>{
         let st;
@@ -473,7 +589,32 @@ function renderSemana(){
   return html;
 }
 
+function avisoPote(){
+  const a=state.casal && state.casal.aviso;
+  return a ? `<div class="banner"><span><b>Pote do casal.</b> ${esc(a)}</span><button class="btn sm" type="button" data-act="aviso-ok">Entendi</button></div>` : "";
+}
+function potCardHTML(){
+  const e=estadoPote(); if(!e) return "";
+  const k=state.casal, pct = e.base>0 ? Math.min(100, e.gastos/e.base*100) : (e.gastos>0?100:0);
+  const over = e.saldo < -0.005, low = !over && e.base>0 && e.saldo <= e.base*0.2, ritmoOk = e.ritmo <= k.semanal*1.05;
+  return `<section class="section" aria-label="Pote do casal">
+    <div class="sec-head"><h2 class="ttl">${ICON_POTE}Pote do casal</h2><span class="small muted">com ${esc(amor())}</span></div>
+    <div class="pote-card num">
+      <div class="label">Saldo do pote</div>
+      <div class="pote-big ${over?"over":""}">${over?"−"+brl(-e.saldo):brl(e.saldo)}</div>
+      <div class="pote-bar"><i style="width:${pct.toFixed(1)}%"></i></div>
+      <div class="pote-rows"><span>Usado <b>${brl(e.gastos)}</b> de <b>${brl(e.base)}</b></span><span>até ${ddmm(e.c.end)}</span></div>
+      ${over ? `<div class="pote-alert bad">Vocês passaram ${brl(-e.saldo)} do pote. A diferença sai do pote do próximo ciclo.</div>`
+        : low ? `<div class="pote-alert">Resta só ${brl(e.saldo)} no pote, menos de 20% do total.</div>` : ""}
+      ${e.gastos>0.005 ? `<div class="row" style="justify-content:space-between;gap:8px"><span class="small">Vocês estão gastando <b>${brl(e.ritmo)}</b> por semana</span><span class="pill ${ritmoOk?"ok":"warn"}">${ritmoOk?"dentro do combinado":"acima dos "+brl(k.semanal)}</span></div>`
+        : `<span class="small muted">Nenhum gasto do casal neste ciclo ainda.</span>`}
+      <div class="hint">Depósito deste ciclo: ${brl(e.total)}${k.modo==="dividimos" ? ` (sua parte ${brl(e.minha)} + parte ${esc(deNome(k.apelido))} ${brl(e.amor)})` : ", tudo do seu dinheiro"}.${e.guardado>0.005 ? ` Inclui ${brl(e.guardado)} guardados de ciclos anteriores.` : e.guardado<-0.005 ? ` Já desconta ${brl(-e.guardado)} que passou no ciclo anterior.` : ""}</div>
+      <div><button type="button" class="btn pote sm" data-act="gasto-pote">+ Gasto do casal</button></div>
+    </div></section>`;
+}
+
 function renderRegistrar(){
+  if(formOrigem==="pote" && !casalAtivo()) formOrigem="proprio";
   const donos = [...new Set(state.gastos.filter(g=>g.origem==="terceiros"&&g.dono).map(g=>g.dono).concat(Object.keys(state.tetos||{})))];
   const descs = [...new Set(state.gastos.slice(-60).map(g=>g.desc).filter(Boolean))].slice(-15);
   const g = formTipo==="gasto";
@@ -486,8 +627,8 @@ function renderRegistrar(){
     <div class="field"><label for="f-valor">Valor</label><div class="money"><span>R$</span><input id="f-valor" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div></div>
     <div class="field"><label for="f-desc">${g?"Com o quê?":"De onde veio?"}</label><input id="f-desc" type="text" list="dl-desc" placeholder="${g?(formModo==="total"?"Ex.: gastos da semana, lanches":"Ex.: lanche, Uber, mercado"):"Ex.: bolsa, mesada, freela"}" autocomplete="off">
       <datalist id="dl-desc">${(g?descs:["Bolsa","Mesada","Pix da família","Salário","Freela"]).map(d=>`<option value="${esc(d)}">`).join("")}</datalist></div>
-    ${g?`<div class="field"><label id="lb-origem">Pago com</label><div class="chips" role="group" aria-labelledby="lb-origem">${Object.entries(ORIGENS).map(([k,v])=>`<button type="button" data-origem="${k}" aria-pressed="${formOrigem===k}">${v}</button>`).join("")}</div>
-      <span class="hint">${formOrigem==="terceiros"?"Quando alguém pagou por você: o cartão dos pais, um Pix que veio só para isso, um empréstimo. Fica separado e não sai do seu dinheiro da semana.":formOrigem==="cartao"?"Sai do dinheiro da semana agora, porque a fatura vai ser paga com o seu dinheiro.":"Pix, débito ou dinheiro vivo."}</span></div>
+    ${g?`<div class="field"><label id="lb-origem">Pago com</label><div class="chips" role="group" aria-labelledby="lb-origem">${Object.entries(ORIGENS).filter(([k])=>k!=="pote"||casalAtivo()).map(([k,v])=>`<button type="button" data-origem="${k}" aria-pressed="${formOrigem===k}">${v}</button>`).join("")}</div>
+      <span class="hint">${formOrigem==="pote"?"Gasto de vocês dois, como comida, cinema, passeio ou delivery. Sai do pote do casal, não do seu dinheiro da semana.":formOrigem==="terceiros"?"Quando alguém pagou por você: o cartão dos pais, um Pix que veio só para isso, um empréstimo. Fica separado e não sai do seu dinheiro da semana.":formOrigem==="cartao"?"Sai do dinheiro da semana agora, porque a fatura vai ser paga com o seu dinheiro.":"Pix, débito ou dinheiro vivo."}</span></div>
       ${formOrigem==="terceiros"?`<div class="field"><label for="f-dono">Quem pagou?</label><input id="f-dono" type="text" list="dl-dono" placeholder="Ex.: Pai, Mãe, tia" autocomplete="off"><datalist id="dl-dono">${donos.map(d=>`<option value="${esc(d)}">`).join("")}</datalist></div>`:""}`:""}
     ${g?`<div class="field"><label id="lb-modo">Foi um gasto só ou o total de vários dias?</label><div class="chips" role="group" aria-labelledby="lb-modo"><button type="button" data-modo="um" aria-pressed="${formModo==="um"}">Um gasto</button><button type="button" data-modo="total" aria-pressed="${formModo==="total"}">Total de vários dias</button></div>
       <span class="hint">${formModo==="total"?"Some tudo o que gastou no período e lance de uma vez. Exemplo: gastei R$ 150 nessa semana.":"Exemplo: um lanche, uma corrida, uma compra."}</span></div>`:""}
@@ -509,7 +650,7 @@ function renderHistorico(){
   const byDay = {}; items.forEach(x=>{ (byDay[x.data]=byDay[x.data]||[]).push(x); });
   let html = header("Histórico") + `<div class="nav-c"><button type="button" data-act="hist-prev" aria-label="Ciclo anterior" ${anyOlder?"":"disabled"}>‹</button><strong class="num">${ddmm(c.start)} a ${ddmm(c.end)}</strong><button type="button" data-act="hist-next" aria-label="Próximo ciclo" ${histCycleOffset>0?"":"disabled"}>›</button></div>`;
   if(!items.length) return html + `<div class="empty">Nada registrado neste ciclo.</div>`;
-  html += `<div class="row small muted"><span class="row" style="gap:6px"><i class="dot proprio"></i>Meu dinheiro</span><span class="row" style="gap:6px"><i class="dot cartao"></i>Meu cartão</span><span class="row" style="gap:6px"><i class="dot terceiros"></i>De outra pessoa</span><span class="row" style="gap:6px"><i class="dot entrada"></i>Entrada</span></div>`;
+  html += `<div class="row small muted"><span class="row" style="gap:6px"><i class="dot proprio"></i>Meu dinheiro</span><span class="row" style="gap:6px"><i class="dot cartao"></i>Meu cartão</span><span class="row" style="gap:6px"><i class="dot terceiros"></i>De outra pessoa</span>${items.some(x=>x.origem==="pote")?`<span class="row" style="gap:6px"><i class="dot pote"></i>Pote do casal</span>`:""}<span class="row" style="gap:6px"><i class="dot entrada"></i>Entrada</span></div>`;
   html += Object.keys(byDay).map(d=>`<div class="day"><h3>${longDay(d)}</h3>${byDay[d].map(x=>{
     const sub = x.tipo==="entrada" ? "Entrada" : (x.origem==="terceiros" ? `Pago por ${esc(x.dono||"outra pessoa")}` : ORIGENS[x.origem]) + (x.ini && x.ini<x.data ? ` · total de ${ddmm(x.ini)} a ${ddmm(x.data)}` : "");
     return `<div class="item"><i class="dot ${x.tipo==="entrada"?"entrada":x.origem}"></i><div class="t"><div>${esc(x.desc||"Sem descrição")}</div><small>${sub}</small></div><span class="val num ${x.tipo==="entrada"?"in":""}">${x.tipo==="entrada"?"+":""}${brl(x.valor)}</span><button type="button" class="del" data-del="${x.tipo}:${x.id}" aria-label="Apagar ${esc(x.desc)}">Apagar</button></div>`;
@@ -552,6 +693,7 @@ function renderAjustes(){
       <button class="btn ghost" type="submit">Adicionar</button>
     </form>
   </div>
+  ${poteAjustesHTML()}
   <div class="card section">
     <h2>Limites combinados</h2>
     <p class="hint" style="margin:0">Para o que outra pessoa paga por você, como o cartão dos pais. É o teto por ciclo que vocês combinaram.</p>
@@ -593,6 +735,7 @@ function renderInicio(){
     <li><div><b>O resto vira o dinheiro de cada semana</b><p>É como separar em envelopes, um para cada semana, de segunda a domingo. Você só precisa olhar para o da semana atual.</p></div></li>
     <li><div><b>O que sobra passa para a semana seguinte</b><p>Sobrou? Soma na próxima. Passou? A diferença sai da próxima. Nada se perde no caminho.</p></div></li>
     <li><div><b>O que outra pessoa paga fica à parte</b><p>Se alguém paga coisas por você, no cartão dela ou com um dinheiro que manda só para isso, você registra separado, com um limite combinado se quiser.</p></div></li>
+    <li><div><b>Quem namora pode ter um pote do casal</b><p>É opcional: um dinheiro separado só pro que vocês fazem juntos. Ele sai de uma vez quando o seu dinheiro entra e não mexe no dinheiro da semana.</p></div></li>
   </ol>`;
   if(temEntrada){
     return html + `<button type="button" class="btn" data-tab-go="semana">Voltar para o painel</button>`;
@@ -606,15 +749,65 @@ function renderInicio(){
     <div class="field"><label for="o-guardar">Quanto você quer guardar por ciclo?</label><div class="money"><span>R$</span><input id="o-guardar" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div><span class="hint">É o que você separa para juntar, como uma poupança ou um porquinho. Esse valor não entra nas semanas. Pode ser zero.</span></div>
     <div class="field"><label for="o-margem">Quanto deixar de reserva para imprevistos?</label><div class="money"><span>R$</span><input id="o-margem" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div><span class="hint">Reserva é um dinheiro separado que você só usa se acontecer algo fora do plano, como remédio, conserto ou uma passagem de última hora. Também não entra nas semanas. Pode ser zero.</span></div>
     <div class="field"><label>Você tem gastos fixos?</label><span class="hint">Contas que se repetem todo ciclo com valor parecido e saem do seu dinheiro: aluguel, internet, academia, assinaturas. Elas são descontadas antes de dividir pelas semanas, então pagar o aluguel não estoura a semana. Se outra pessoa paga a conta, não coloque aqui.</span><div id="o-fixos" class="fx-list"></div><div><button type="button" class="btn ghost sm" data-act="o-add-fixo">+ Adicionar gasto fixo</button></div></div>
+    <div class="field"><label id="lb-namora">Você namora?</label>
+      <div class="chips" role="group" aria-labelledby="lb-namora"><button type="button" data-namora="sim" aria-pressed="false">Sim</button><button type="button" data-namora="nao" aria-pressed="true">Não</button></div>
+      <span class="hint">Se sim, dá pra separar um pote do casal. Vale pra qualquer relacionamento, e dá pra mudar depois em Ajustes.</span>
+      <div id="o-pote" class="panel" hidden>${potFieldsHTML("o")}</div>
+    </div>
     <div class="preview num" id="o-prev" aria-live="polite"></div>
     <div id="o-err" class="err" hidden></div>
     <button class="btn" type="submit">Começar</button>
     <button class="btn ghost" type="button" data-tab-go="semana">Pular por enquanto</button>
   </form>`;
 }
+function potFieldsHTML(p, v){
+  v=Object.assign({semanal:0, modo:"eu", apelido:"", sobra:"guardar"}, v||{});
+  const val = v.semanal>0 ? Number(v.semanal).toFixed(2).replace(".",",") : "";
+  return `<p class="hint" style="margin:0">${POTE_EXPLICA}</p>
+  <div class="field"><label for="${p}-p-sem">Quanto vocês querem gastar juntos por semana?</label><div class="money"><span>R$</span><input id="${p}-p-sem" type="text" inputmode="decimal" placeholder="60,00" value="${val}" autocomplete="off"></div></div>
+  <div class="field"><label id="${p}-lb-modo">A pessoa com quem você namora também vai colocar dinheiro?</label><div class="chips" role="group" aria-labelledby="${p}-lb-modo" data-grupo="${p}-modo"><button type="button" data-val="eu" aria-pressed="${v.modo!=="dividimos"}">Só eu</button><button type="button" data-val="dividimos" aria-pressed="${v.modo==="dividimos"}">Dividimos</button></div><span class="hint">Em "Dividimos", cada pessoa coloca metade. Só a sua metade sai do seu dinheiro.</span></div>
+  <div class="field"><label for="${p}-p-apelido">Apelido do seu amor (opcional)</label><input id="${p}-p-apelido" type="text" maxlength="24" value="${esc(v.apelido)}" placeholder="Ex.: Mo" autocomplete="off"><span class="hint">Só aparece no seu app. Nenhum outro dado da outra pessoa é guardado.</span></div>
+  <div class="field"><label id="${p}-lb-sobra">No fim do ciclo, o que sobrar no pote:</label><div class="chips" role="group" aria-labelledby="${p}-lb-sobra" data-grupo="${p}-sobra"><button type="button" data-val="guardar" aria-pressed="${v.sobra!=="voltar"}">Fica guardado pra um programa maior</button><button type="button" data-val="voltar" aria-pressed="${v.sobra==="voltar"}">Volta pro meu orçamento</button></div></div>
+  <div class="pote-calc num" id="${p}-p-calc" aria-live="polite"></div>`;
+}
+function lerPote(p){
+  const g=n=>{ const b=document.querySelector(`[data-grupo="${p}-${n}"] button[aria-pressed="true"]`); return b?b.dataset.val:""; };
+  const sem=document.getElementById(`${p}-p-sem`), ap=document.getElementById(`${p}-p-apelido`);
+  return {semanal: sem ? (parseMoney(sem.value)||0) : 0, modo: g("modo")==="dividimos"?"dividimos":"eu", apelido: ap ? ap.value.trim().slice(0,24) : "", sobra: g("sobra")==="voltar"?"voltar":"guardar"};
+}
+function potCalcHTML(v, c, inicio){
+  if(!(v.semanal>0)) return `<span class="small">Digite o valor por semana para ver quanto vai para o pote.</span>`;
+  const k=calcPote(v, c, inicio), sem=(k.dias/7).toFixed(1).replace(".",",");
+  return `<span class="label">Depósito no pote</span><div class="pote-big">${brl(k.total)}</div>
+    <span class="small">${brl(v.semanal)} por semana × ${sem} semanas ${k.cheio?"do ciclo":"que faltam no ciclo"} (até ${ddmm(c.end)}).</span>
+    <span class="small">${v.modo==="dividimos" ? `Sua parte: <b>${brl(k.minha)}</b> · parte ${esc(deNome(v.apelido))}: <b>${brl(k.amor)}</b>.` : `Sai tudo do seu dinheiro: <b>${brl(k.minha)}</b>.`} Sai de uma vez, ${k.cheio?"no dia em que o seu dinheiro entra":"a partir de hoje"}, e não entra no dinheiro das semanas.</span>`;
+}
+function updatePotAjustes(){
+  const el=document.getElementById("a-p-calc"); if(!el) return;
+  const k=state.casal; el.innerHTML=potCalcHTML(lerPote("a"), cycleOf(today(),state.config.diaInicio), k.ativo?k.inicio:today());
+}
+function poteAjustesHTML(){
+  const k=state.casal, aberto = k.ativo || poteUI==="form";
+  let h=`<div class="card section" id="pote">
+    <div class="row" style="justify-content:space-between;flex-wrap:nowrap"><h2 class="ttl">${ICON_POTE}Pote do casal</h2><button type="button" class="switch" role="switch" aria-checked="${aberto}" aria-label="Pote do casal" data-act="pote-switch"></button></div>`;
+  if(!aberto) return h+`<p class="hint" style="margin:0">Pra quem namora: um dinheiro separado só pro que vocês fazem juntos. Dá pra ativar e desativar quando quiser.</p></div>`;
+  if(poteUI==="desligar"){
+    const e=estadoPote(), s=e?e.saldo:0, meio=r2(s/2);
+    h+=`<div class="panel"><b>Desativar o pote do casal</b>`;
+    if(s>0.005) h+=`<p class="hint" style="margin:0">Sobrou ${brl(s)} no pote. O que fazer com esse dinheiro?</p>
+      <button class="btn" type="button" data-act="pote-off-tudo">Devolver tudo pro meu orçamento (${brl(s)})</button>
+      <button class="btn ghost" type="button" data-act="pote-off-dividir">Dividir: ${brl(meio)} pra mim e ${brl(s-meio)} pra ${esc(amor())}</button>`;
+    else if(s<-0.005) h+=`<p class="hint" style="margin:0">O pote está ${brl(-s)} no negativo. Ao desativar, esse valor sai do seu dinheiro desta semana.</p><button class="btn" type="button" data-act="pote-off">Desativar</button>`;
+    else h+=`<p class="hint" style="margin:0">O pote está zerado. Ao desativar, o apelido é apagado e o pote some da tela da semana.</p><button class="btn" type="button" data-act="pote-off">Desativar</button>`;
+    return h+`<button class="btn ghost" type="button" data-act="pote-cancelar">Cancelar</button></div></div>`;
+  }
+  return h+`<form id="pote-form" class="section" novalidate>${potFieldsHTML("a", k.ativo?k:{})}<div id="a-p-err" class="err" hidden></div>
+    <div class="row"><button class="btn" type="submit">${k.ativo?"Salvar o pote":"Ativar o pote"}</button>${k.ativo?"":`<button type="button" class="btn ghost" data-act="pote-cancelar">Cancelar</button>`}</div></form></div>`;
+}
 let fxSeq=0;
 function linhaFixo(){ fxSeq++; return `<div class="fx"><input type="text" id="o-fx-n${fxSeq}" class="fx-nome" placeholder="Ex.: academia" aria-label="Nome do gasto fixo" autocomplete="off"><div class="money"><span>R$</span><input type="text" id="o-fx-v${fxSeq}" class="fx-valor" inputmode="decimal" placeholder="0,00" aria-label="Valor do gasto fixo" autocomplete="off"></div><button type="button" class="btn ghost sm" data-act="o-del-fixo">Remover</button></div>`; }
 function lerFixosOb(){ return [...document.querySelectorAll("#o-fixos .fx")].map(row=>({nome:row.querySelector(".fx-nome").value.trim(), valor:parseMoney(row.querySelector(".fx-valor").value)||0})).filter(f=>f.valor>0); }
+const namoraOb = () => { const b=document.querySelector('[data-namora="sim"]'); return !!b && b.getAttribute("aria-pressed")==="true"; };
 function updatePreview(){
   const el=document.getElementById("o-prev"); if(!el) return;
   const dia=Number(document.getElementById("o-dia").value)||5;
@@ -623,20 +816,26 @@ function updatePreview(){
   const m=parseMoney(document.getElementById("o-margem").value)||0;
   const fx=lerFixosOb().reduce((a,f)=>a+f.valor,0);
   const c=cycleOf(today(),dia), dias=daysIncl(c.start,c.end);
-  const sem=Math.max(0,v-g-m-fx), porSemana=sem*7/dias;
+  let pm=0;
+  if(namoraOb()){ const pv=lerPote("o"), pc=document.getElementById("o-p-calc"); if(pc) pc.innerHTML=potCalcHTML(pv,c,today()); if(pv.semanal>0) pm=calcPote(pv,c,today()).minha; }
+  const sem=Math.max(0,v-g-m-fx-pm), porSemana=sem*7/dias;
   if(!(v>0)){ el.innerHTML=`<span class="label">Seu dinheiro por semana</span><div class="calc">Digite quanto entra para ver o cálculo.</div>`; return; }
   el.innerHTML=`<span class="label">Seu dinheiro por semana</span><div class="big">${brl(porSemana)}</div>
-    <div class="calc"><span>Entra no ciclo <b>${brl(v)}</b></span><span>Gastos fixos <b>− ${brl(fx)}</b></span><span>Guardar <b>− ${brl(g)}</b></span><span>Reserva para imprevistos <b>− ${brl(m)}</b></span><span>Fica para as semanas <b>${brl(sem)}</b></span><span>Ciclo de ${ddmm(c.start)} a ${ddmm(c.end)}, ${dias} dias <b>${(dias/7).toFixed(1).replace(".",",")} semanas</b></span></div>
-    ${g+m+fx>v?`<div class="small" style="color:var(--accent)">Gastos fixos, guardar e reserva somados passam do que entra. Diminua algum deles.</div>`:""}`;
+    <div class="calc"><span>Entra no ciclo <b>${brl(v)}</b></span><span>Gastos fixos <b>− ${brl(fx)}</b></span><span>Guardar <b>− ${brl(g)}</b></span><span>Reserva para imprevistos <b>− ${brl(m)}</b></span>${pm>0?`<span>Pote do casal, sua parte <b>− ${brl(pm)}</b></span>`:""}<span>Fica para as semanas <b>${brl(sem)}</b></span><span>Ciclo de ${ddmm(c.start)} a ${ddmm(c.end)}, ${dias} dias <b>${(dias/7).toFixed(1).replace(".",",")} semanas</b></span></div>
+    ${g+m+fx+pm>v?`<div class="small" style="color:var(--accent)">Gastos fixos, guardar, reserva e pote somados passam do que entra. Diminua algum deles.</div>`:""}`;
 }
 
 function render(){
+  if(fecharPote()) save();
+  const cur=cycleOf(today(),state.config.diaInicio).start;
+  Object.keys(state.casal.descontos).forEach(x=>{ if(x<cur) delete state.casal.descontos[x]; });
   const map = {inicio:renderInicio, semana:renderSemana, registrar:renderRegistrar, historico:renderHistorico, ajustes:renderAjustes};
   app.innerHTML = map[tab]();
   if(tab==="inicio") updatePreview();
+  if(tab==="ajustes") updatePotAjustes();
   document.querySelectorAll(".tabs button").forEach(b=> b.setAttribute("aria-current", b.dataset.tab===tab ? "page" : "false"));
 }
-function go(t){ tab=t; render(); window.scrollTo(0,0); }
+function go(t){ tab=t; poteUI=null; render(); window.scrollTo(0,0); }
 function toast(msg){
   let el=document.querySelector(".toast"); if(!el){ el=document.createElement("div"); el.className="toast"; el.setAttribute("role","status"); document.body.appendChild(el); }
   el.textContent=msg; el.hidden=false; clearTimeout(toastTimer); toastTimer=setTimeout(()=>{el.hidden=true;},2200);
@@ -655,6 +854,12 @@ document.querySelector(".tabs").addEventListener("click",e=>{ const b=e.target.c
 app.addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
   if(b.dataset.tabGo){ go(b.dataset.tabGo); return; }
+  const grp=b.closest("[data-grupo]");
+  if(grp){ grp.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", String(x===b))); updatePreview(); updatePotAjustes(); return; }
+  if(b.dataset.namora){
+    b.parentElement.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", String(x===b)));
+    document.getElementById("o-pote").hidden = b.dataset.namora!=="sim"; updatePreview(); return;
+  }
   if(b.dataset.tipo){ formTipo=b.dataset.tipo; render(); return; }
   if(b.dataset.origem || b.dataset.modo){
     const keep={}; ["f-valor","f-desc","f-dono"].forEach(id=>{ const el=document.getElementById(id); if(el) keep[id]=el.value; });
@@ -682,6 +887,13 @@ app.addEventListener("click",e=>{
   else if(a==="o-del-fixo"){ b.closest(".fx").remove(); updatePreview(); }
   else if(a==="ir-instalar"){ go("ajustes"); const el=document.getElementById("instalar"); if(el) el.scrollIntoView(); }
   else if(a==="instalar" && deferredPrompt){ deferredPrompt.prompt(); deferredPrompt.userChoice.then(()=>{ deferredPrompt=null; render(); }); }
+  else if(a==="gasto-pote"){ formTipo="gasto"; formModo="um"; formOrigem="pote"; go("registrar"); }
+  else if(a==="aviso-ok"){ state.casal.aviso=""; save(); render(); }
+  else if(a==="pote-switch"){ poteUI = casalAtivo() ? (poteUI==="desligar"?null:"desligar") : (poteUI==="form"?null:"form"); render(); const el=document.getElementById("pote"); if(el) el.scrollIntoView({block:"nearest"}); }
+  else if(a==="pote-cancelar"){ poteUI=null; render(); }
+  else if(a==="pote-off-tudo"){ desligarPote("tudo"); }
+  else if(a==="pote-off-dividir"){ desligarPote("dividir"); }
+  else if(a==="pote-off"){ desligarPote(null); }
   else if(a==="novo-gasto"){ formTipo="gasto"; formModo="um"; go("registrar"); }
   else if(a==="total-semana"){ formTipo="gasto"; formModo="total"; go("registrar"); }
   else if(a==="nova-entrada"){ formTipo="entrada"; go("registrar"); }
@@ -702,10 +914,10 @@ function restore(txt){
   try{
     const s=JSON.parse(txt);
     if(!s || !s.config || !Array.isArray(s.gastos) || !Array.isArray(s.entradas)) throw new Error();
-    s.tetos=s.tetos||{}; s.fixos=s.fixos||[]; s.pagos=s.pagos||{}; s.exemplo=false; state=s; save(); go("semana"); toast("Backup restaurado");
+    normalizar(s); s.exemplo=false; state=s; save(); go("semana"); toast("Backup restaurado");
   }catch(err){ toast("Esse texto não é um backup do Painel da Grana"); }
 }
-app.addEventListener("input",e=>{ if(e.target.closest("#ob")) updatePreview(); });
+app.addEventListener("input",e=>{ if(e.target.closest("#ob")) updatePreview(); if(e.target.closest("#pote-form")) updatePotAjustes(); });
 app.addEventListener("change",e=>{
   if(e.target.id==="o-dia") updatePreview();
   if(e.target.id==="bk-file" && e.target.files[0]){ const r=new FileReader(); r.onload=()=>restore(String(r.result)); r.readAsText(e.target.files[0]); }
@@ -725,10 +937,15 @@ app.addEventListener("submit",e=>{
     let dono="";
     if(formTipo==="gasto" && formOrigem==="terceiros"){ dono=document.getElementById("f-dono").value.trim(); if(!dono){ err.textContent="Diga quem pagou, por exemplo Pai."; err.hidden=false; document.getElementById("f-dono").focus(); return; } }
     leaveExample();
+    const antes = formTipo==="gasto" && formOrigem==="pote" ? estadoPote() : null;
     if(formTipo==="gasto") state.gastos.push({id:uid(), data, valor, desc, origem:formOrigem, ...(dono?{dono}:{}), ...(ini&&ini<data?{ini}:{})});
     else state.entradas.push({id:uid(), data, valor, desc});
     save();
-    const msg = formTipo==="gasto" ? `Gasto de ${brl(valor)} registrado` : `Entrada de ${brl(valor)} registrada`;
+    let msg = formTipo==="gasto" ? `Gasto de ${brl(valor)} registrado` : `Entrada de ${brl(valor)} registrada`;
+    if(antes){ const dep=estadoPote(); if(dep){
+      if(dep.saldo<-0.005) msg+=`. O pote passou ${brl(-dep.saldo)}`;
+      else if(dep.base>0 && dep.saldo<=dep.base*0.2 && antes.saldo>antes.base*0.2) msg+=`. Atenção: resta só ${brl(dep.saldo)} no pote`;
+    } }
     formTipo="gasto"; formModo="um"; go("semana"); toast(msg);
   }
   else if(f.id==="ob"){
@@ -739,17 +956,29 @@ app.addEventListener("submit",e=>{
     const m=parseMoney(document.getElementById("o-margem").value)||0;
     if(!(v>0)){ err.textContent="Digite quanto entra neste ciclo, por exemplo 1.200,00."; err.hidden=false; document.getElementById("o-valor").focus(); return; }
     const fixos=lerFixosOb();
-    if(g+m+fixos.reduce((a,f)=>a+f.valor,0)>v){ err.textContent="Gastos fixos, guardar e reserva somados não podem passar do que entra."; err.hidden=false; return; }
+    const namora=namoraOb(), pv=namora?lerPote("o"):null;
+    if(namora && !(pv.semanal>0)){ err.textContent="Digite quanto vocês querem gastar juntos por semana, ou marque que não namora."; err.hidden=false; document.getElementById("o-p-sem").focus(); return; }
+    const pm = namora ? calcPote(pv, cycleOf(today(),dia), today()).minha : 0;
+    if(g+m+pm+fixos.reduce((a,f)=>a+f.valor,0)>v){ err.textContent="Gastos fixos, guardar, reserva e pote somados não podem passar do que entra."; err.hidden=false; return; }
     leaveExample();
     state.config.diaInicio=dia; state.config.guardar=g; state.config.margem=m;
     state.fixos=fixos.map((f,i)=>({id:uid(), nome:f.nome||`Gasto fixo ${i+1}`, valor:f.valor}));
+    if(namora) ativarPote(pv);
     state.entradas.push({id:uid(), data:cycleOf(today(),dia).start, valor:v, desc:document.getElementById("o-desc").value.trim()||"Entrada do ciclo"});
     save(); go("semana"); toast("Ciclo montado. Agora é só registrar os gastos.");
+  }
+  else if(f.id==="pote-form"){
+    const v=lerPote("a"), err=document.getElementById("a-p-err");
+    if(!(v.semanal>0)){ err.textContent="Digite quanto vocês querem gastar juntos por semana, por exemplo 60,00."; err.hidden=false; document.getElementById("a-p-sem").focus(); return; }
+    const novo=!casalAtivo();
+    if(novo) ativarPote(v); else Object.assign(state.casal, {semanal:v.semanal, modo:v.modo, apelido:v.apelido, sobra:v.sobra});
+    poteUI=null; save(); render(); toast(novo?"Pote do casal ativado":"Pote atualizado");
   }
   else if(f.id==="cfg"){
     const g=parseMoney(document.getElementById("c-guardar").value);
     const m=parseMoney(document.getElementById("c-margem").value);
     state.config.diaInicio=Number(document.getElementById("c-dia").value)||5;
+    if(casalAtivo()) state.casal.ciclo=cycleOf(today(),state.config.diaInicio).start;
     state.config.guardar= g>=0 ? g : 0;
     state.config.margem= m>=0 ? m : 0;
     save(); render(); toast("Ajustes salvos");
@@ -770,7 +999,7 @@ if(!state.exemplo && !state.entradas.length && !state.gastos.length) tab="inicio
 save();
 render();
 try{ if("serviceWorker" in navigator && window.self===window.top && location.protocol==="https:") navigator.serviceWorker.register("./sw.js").catch(()=>{}); }catch(e){}
-window.__grana = {compute, cycleOf, weeksOf, pattern, get state(){return state;}};
+window.__grana = {compute, cycleOf, weeksOf, pattern, estadoPote, get state(){return state;}};
 })();
 </script>
 
