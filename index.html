@@ -160,6 +160,18 @@ textarea{min-height:120px;font-size:13px;font-family:ui-monospace,Menlo,monospac
 .fx .money input{font-size:17px;padding-left:40px}
 .fx .money span{font-size:15px}
 .fx-list{display:flex;flex-direction:column;gap:8px}
+.toast-act{border:0;background:transparent;color:inherit;font-weight:800;text-decoration:underline;margin-left:10px;padding:2px 4px}
+.freq b{font-weight:700;margin-left:4px}
+.imp-list{display:flex;flex-direction:column;gap:8px}
+.imp{display:grid;grid-template-columns:auto 1fr auto;gap:6px 12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.imp input[type=checkbox]{width:20px;height:20px;accent-color:var(--mil);margin:0}
+.imp label{min-width:0;cursor:pointer}
+.imp label div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.imp label small{color:var(--muted);font-size:12px}
+.imp .val{font-weight:600}
+.imp .val.in{color:var(--ok)}
+.imp select{grid-column:2/-1;padding:8px 10px;border-radius:10px}
+.imp.off{opacity:.55}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:99px;font-size:14px;font-weight:600;z-index:30;max-width:calc(100% - 32px)}
 .err{color:var(--bad);font-size:13px}
 
@@ -313,11 +325,11 @@ function save(){
   catch(e){ memOnly = true; }
 }
 function freshState(){
-  return {config:{diaInicio:5, guardar:0, margem:0}, tetos:{}, fixos:[], pagos:{}, casal:casalPadrao(), faturas:[], entradas:[], gastos:[], exemplo:false};
+  return {config:{diaInicio:5, guardar:0, margem:0}, tetos:{}, fixos:[], pagos:{}, casal:casalPadrao(), faturas:[], recorrentes:[], lancadas:{}, entradas:[], gastos:[], exemplo:false};
 }
 // pote do casal: da outra pessoa, só um apelido opcional
 function casalPadrao(){ return {ativo:false, apelido:"", semanal:0, modo:"eu", sobra:"guardar", inicio:"", ciclo:"", guardado:0, descontos:{}, aviso:""}; }
-function normalizar(s){ s.tetos=s.tetos||{}; s.fixos=s.fixos||[]; s.pagos=s.pagos||{}; s.casal=Object.assign(casalPadrao(), s.casal||{}); s.casal.descontos=s.casal.descontos||{}; s.faturas=s.faturas||[]; return s; }
+function normalizar(s){ s.tetos=s.tetos||{}; s.fixos=s.fixos||[]; s.pagos=s.pagos||{}; s.casal=Object.assign(casalPadrao(), s.casal||{}); s.casal.descontos=s.casal.descontos||{}; s.faturas=s.faturas||[]; s.recorrentes=s.recorrentes||[]; s.lancadas=s.lancadas||{}; return s; }
 function exampleState(){
   const st = freshState(); st.exemplo = true; st.config.guardar = 300; st.config.margem = 100;
   st.tetos = {"Pai":300};
@@ -335,6 +347,7 @@ function exampleState(){
   let d = c0.start;
   while(d<=t){
     const w=dow(d);
+    if(w===0||w===2) st.gastos.push({id:uid(), data:d, valor:5.2, desc:"Almoço no RU", origem:"proprio"});
     if(rnd() < 0.78){
       const v = Math.round((8 + rnd()*30*peso[w])*100)/100;
       st.gastos.push({id:uid(), data:d, valor:v, desc:lista[Math.floor(rnd()*lista.length)], origem:"proprio"});
@@ -516,7 +529,7 @@ function storageWarn(){
 
 function renderSemana(){
   const t=today(), r=compute(t), pat=pattern();
-  let html = header() + storageWarn() + exampleBanner() + avisoPote();
+  let html = header() + storageWarn() + exampleBanner() + avisoPote() + avisoRec();
 
   if(!r.entradas.length){
     html += `<div class="card section"><h2>Comece registrando o que entrou</h2><p class="muted small" style="margin:0">Bolsa, mesada, salário, Pix da família. O painel separa uma parte desse valor para cada semana, de segunda a domingo, a partir do dia ${state.config.diaInicio}.</p><div><button class="btn" type="button" data-act="nova-entrada">Registrar entrada</button></div></div>`;
@@ -547,7 +560,7 @@ function renderSemana(){
   }
 
   if(r.entradas.length){
-    html += `<div class="row quick"><button type="button" class="btn" data-act="novo-gasto">+ Registrar gasto</button><button type="button" class="btn ghost" data-act="total-semana">Lançar o total da semana</button></div>`;
+    html += `<div class="row quick"><button type="button" class="btn" data-act="novo-gasto">+ Registrar gasto</button><button type="button" class="btn ghost" data-act="total-semana">Lançar o total da semana</button></div>` + frequentesHTML();
   }
   html += potCardHTML();
   if(r.totalEnt>0){
@@ -597,6 +610,129 @@ function renderSemana(){
   return html;
 }
 
+/* ---------- entradas que se repetem ---------- */
+function dataNoCiclo(dia, c){ const [y,m]=c.start.split("-").map(Number); const a=iso(y,m,dia); return a>=c.start ? a : iso(y,m+1,dia); }
+function lancarRecorrentes(){
+  const t=today(), c=cycleOf(t,state.config.diaInicio), novos=[];
+  (state.recorrentes||[]).forEach(rc=>{
+    const key=rc.id+"|"+c.start; if(state.lancadas[key]) return;
+    const d=dataNoCiclo(rc.dia,c); if(d>t) return;
+    state.entradas.push({id:uid(), data:d, valor:rc.valor, desc:rc.desc, rec:rc.id});
+    state.lancadas[key]=1; novos.push(`${rc.desc} ${brl(rc.valor)}`);
+  });
+  if(novos.length) state.avisoRec=novos.join(", ");
+  return novos.length>0;
+}
+function avisoRec(){
+  return state.avisoRec ? `<div class="banner"><span><b>Lançado sozinho:</b> ${esc(state.avisoRec)}. Se o valor veio diferente, apague no Histórico e registre o certo.</span><button class="btn sm" type="button" data-act="rec-ok">Entendi</button></div>` : "";
+}
+function recAjustesHTML(){
+  const l=state.recorrentes||[];
+  return `<div class="card section"><h2>Entradas que se repetem</h2>
+    <p class="hint" style="margin:0">Bolsa, mesada, salário. O app lança sozinho a cada ciclo, quando chega o dia. Se o dia deste ciclo já passou, começa no próximo.</p>
+    ${l.map(x=>`<div class="row" style="justify-content:space-between"><span>${esc(x.desc)}: <b class="num">${brl(x.valor)}</b> <span class="muted small">todo dia ${x.dia}</span></span><button type="button" class="btn ghost sm" data-rec-del="${x.id}">Remover</button></div>`).join("")}
+    <form id="recf" class="row" novalidate style="gap:8px;flex-direction:row;align-items:flex-end">
+      <div class="field" style="flex:1 1 120px"><label for="rc-nome">Entrada</label><input id="rc-nome" type="text" placeholder="Ex.: bolsa"></div>
+      <div class="field" style="flex:1 1 100px"><label for="rc-valor">Valor</label><input id="rc-valor" type="text" inputmode="decimal" placeholder="1.080,00"></div>
+      <div class="field" style="flex:0 1 92px"><label for="rc-dia">Dia</label><select id="rc-dia">${Array.from({length:28},(_,i)=>i+1).map(n=>`<option value="${n}" ${n===state.config.diaInicio?"selected":""}>${n}</option>`).join("")}</select></div>
+      <button class="btn ghost" type="submit">Adicionar</button>
+    </form></div>`;
+}
+/* ---------- gastos de sempre ---------- */
+function frequentes(){
+  const lim=addDays(today(),-60), m=new Map();
+  state.gastos.forEach(g=>{ if(!g.desc || g.ini || g.data<lim) return;
+    const k=[g.desc.trim().toLowerCase(), g.valor, g.origem, g.dono||""].join("|"), e=m.get(k)||{n:0, ult:"", g};
+    e.n++; if(g.data>=e.ult){ e.ult=g.data; e.g=g; } m.set(k,e); });
+  return [...m.values()].filter(e=>e.n>=2 && (e.g.origem!=="pote"||casalAtivo())).sort((a,b)=>b.n-a.n || (a.ult<b.ult?1:-1)).slice(0,6).map(e=>e.g);
+}
+function frequentesHTML(){
+  const f=frequentes(); if(!f.length) return "";
+  return `<section class="section"><div class="sec-head"><h2>Gastos de sempre</h2><span class="small muted">um toque registra hoje</span></div>
+    <div class="chips">${f.map((g,i)=>`<button type="button" class="freq" data-freq="${i}">${esc(g.desc)}<b class="num">${brl(g.valor)}</b></button>`).join("")}</div></section>`;
+}
+/* ---------- importar extrato (lido só no aparelho) ---------- */
+let importLista=null;
+function numBanco(s){
+  s=String(s||"").replace(/R\$|\s|"/g,""); const neg=/^-|^\(|-$/.test(s); s=s.replace(/[()+-]/g,"");
+  const lc=s.lastIndexOf(","), ld=s.lastIndexOf(".");
+  if(lc>-1 && ld>-1) s = lc>ld ? s.replace(/\./g,"").replace(",",".") : s.replace(/,/g,"");
+  else if(lc>-1) s=s.replace(",",".");
+  else if(ld>-1 && s.indexOf(".")!==ld) s=s.replace(/\./g,"");
+  const v=parseFloat(s); return isFinite(v) ? (neg?-v:v) : NaN;
+}
+function dataBanco(s){
+  s=String(s||"").trim(); let m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if(m){ const y=m[3].length===2?2000+Number(m[3]):Number(m[3]); return iso(y,Number(m[2]),Number(m[1])); }
+  m=s.match(/^(\d{4})-?(\d{2})-?(\d{2})/); return m ? `${m[1]}-${m[2]}-${m[3]}` : "";
+}
+function splitCSV(l, sep){ const out=[]; let cur="", q=false; for(const ch of l){ if(ch==='"') q=!q; else if(ch===sep && !q){ out.push(cur); cur=""; } else cur+=ch; } out.push(cur); return out.map(x=>x.trim()); }
+function lerOFX(txt){
+  const lista=[];
+  txt.split(/<STMTTRN>/i).slice(1).forEach(b=>{
+    const tag=n=>{ const m=b.match(new RegExp("<"+n+">([^<\\r\\n]*)","i")); return m?m[1].trim():""; };
+    const v=numBanco(tag("TRNAMT")), d=dataBanco(tag("DTPOSTED").slice(0,8));
+    if(isFinite(v) && d) lista.push({data:d, valor:v, desc:tag("MEMO")||tag("NAME")||"Sem descrição"});
+  });
+  return {lista, cartao:/<CREDITCARDMSGSRSV1>|<CCSTMTRS>/i.test(txt)};
+}
+function lerCSV(txt){
+  const linhas=txt.replace(/^\uFEFF/,"").split(/\r?\n/).filter(l=>l.trim());
+  let hi=-1, sep=",";
+  for(let i=0;i<Math.min(linhas.length,20);i++){ const l=linhas[i].toLowerCase(); if(/data|date/.test(l) && /valor|amount|value/.test(l)){ hi=i; sep=l.split(";").length>l.split(",").length?";":","; break; } }
+  if(hi<0) return null;
+  const cols=splitCSV(linhas[hi].toLowerCase(), sep);
+  const iD=cols.findIndex(c=>/^(data|date)/.test(c)), iV=cols.findIndex(c=>/valor|amount|value/.test(c) && !/saldo/.test(c));
+  let iT=-1; for(const k of ["descri","title","hist","memo","estabelec","lan","identif"]){ iT=cols.findIndex((c,i)=>i!==iD && i!==iV && c.includes(k)); if(iT>-1) break; }
+  if(iD<0 || iV<0) return null;
+  const cartao = cols.includes("title") && cols.includes("amount");
+  const lista=[];
+  linhas.slice(hi+1).forEach(l=>{ const c=splitCSV(l,sep), d=dataBanco(c[iD]); let v=numBanco(c[iV]);
+    if(!d || !isFinite(v)) return; if(cartao) v=-v;
+    lista.push({data:d, valor:v, desc:(iT>-1?c[iT]:"")||"Sem descrição"}); });
+  return {lista, cartao};
+}
+function jaRegistrado(tipo, data, valor, key){
+  return (tipo==="gasto"?state.gastos:state.entradas).some(x=> x.imp===key || (Math.abs(x.valor-valor)<0.01 && !x.ini && Math.abs(daysIncl(x.data,data)-1)<=2));
+}
+function prepararImport(lista, cartao){
+  return lista.map(x=>{
+    const tipo=x.valor<0?"gasto":"entrada", valor=r2(Math.abs(x.valor)), desc=String(x.desc).slice(0,60), d=desc.toLowerCase(), key=`${x.data}|${valor}|${desc}`;
+    let marcado=true, nota="";
+    if(cartao && tipo==="entrada"){ marcado=false; nota="pagamento ou estorno do cartão"; }
+    else if(!cartao && tipo==="gasto" && /fatura|pagamento de cart/.test(d)){ marcado=false; nota="parece pagamento de fatura"; }
+    else if(/aplica|resgat|rdb|cofrinho|porquinho|caixinha|invest|cdb/.test(d)){ marcado=false; nota="parece dinheiro guardado ou resgatado"; }
+    if(jaRegistrado(tipo, x.data, valor, key)){ marcado=false; nota="parece já registrado"; }
+    return {data:x.data, valor, tipo, desc, key, origem: tipo==="gasto" ? (cartao?"cartao":"proprio") : "", marcado, nota};
+  }).sort((a,b)=>a.data<b.data?1:a.data>b.data?-1:0);
+}
+function lerArquivo(file){
+  const fr=new FileReader();
+  fr.onload=()=>{
+    let txt=new TextDecoder("utf-8").decode(fr.result);
+    if(txt.includes("\uFFFD")){ try{ txt=new TextDecoder("windows-1252").decode(fr.result); }catch(e){} }
+    const res = /<OFX>|<STMTTRN>/i.test(txt) ? lerOFX(txt) : lerCSV(txt);
+    if(!res || !res.lista.length){ toast("Não consegui ler esse arquivo. Use o extrato em CSV ou OFX."); return; }
+    importLista=prepararImport(res.lista, res.cartao); render();
+  };
+  fr.readAsArrayBuffer(file);
+}
+function impBotao(){ const n=importLista?importLista.filter(x=>x.marcado).length:0; return n ? `Importar ${n} ${n===1?"lançamento":"lançamentos"}` : "Nada marcado"; }
+function renderImportar(){
+  let h=header("Importar extrato")+`<p class="intro">Traga os gastos e as entradas do banco de uma vez. O arquivo é lido aqui no seu celular e não é enviado pra lugar nenhum.</p>`;
+  if(!importLista) return h+`<div class="card section">
+    <h2>Como pegar o arquivo</h2>
+    <p class="small" style="margin:0"><b>Nubank:</b> Conta, Pedir extrato, escolha o período e toque em Exportar extrato. Escolha CSV ou OFX. O arquivo chega no seu e-mail.</p>
+    <p class="small" style="margin:0"><b>Inter:</b> no extrato, use a opção de exportar e escolha OFX.</p>
+    <p class="hint" style="margin:0">Outros bancos costumam ter a mesma opção. Baixe o anexo no celular e escolha o arquivo abaixo.</p>
+    <div class="field"><label for="imp-file">Arquivo do extrato (CSV ou OFX)</label><input id="imp-file" type="file" accept=".csv,.ofx,.txt,text/csv"></div>
+  </div>`;
+  const opts=[["proprio","Meu dinheiro"],["cartao","Meu cartão"]].concat(casalAtivo()?[["pote","Pote do casal"]]:[]);
+  return h+`<div class="card section"><p class="small" style="margin:0">${importLista.length} lançamentos encontrados. Os que parecem repetidos, pagamento de fatura ou dinheiro guardado vêm desmarcados. Confira e escolha de onde saiu cada gasto.</p>
+    <p class="hint" style="margin:0">Se você reservou a fatura de um cartão em Faturas, não importe as compras desse cartão.</p>
+    <div class="row"><button type="button" class="btn" id="imp-ok" data-act="imp-ok">${impBotao()}</button><button type="button" class="btn ghost" data-act="imp-limpar">Escolher outro arquivo</button></div></div>
+    <div class="imp-list num">${importLista.map((x,i)=>`<div class="imp ${x.marcado?"":"off"}"><input type="checkbox" id="imp-${i}" data-imp="${i}" ${x.marcado?"checked":""}><label for="imp-${i}"><div>${esc(x.desc)}</div><small>${ddmm(x.data)}${x.tipo==="entrada"?" · entrada":""}${x.nota?" · "+x.nota:""}</small></label><span class="val ${x.tipo==="entrada"?"in":""}">${x.tipo==="entrada"?"+":"−"}${brl(x.valor)}</span>${x.tipo==="gasto"?`<select data-imp-orig="${i}" aria-label="De onde saiu">${opts.map(([k,l])=>`<option value="${k}" ${x.origem===k?"selected":""}>${l}</option>`).join("")}</select>`:""}</div>`).join("")}</div>`;
+}
 function statusFatura(f, c){
   const t=today();
   if(f.pago) return ["", `paga · vencia ${ddmm(f.venc)}`];
@@ -670,9 +806,12 @@ function renderRegistrar(){
       <span class="hint">${formModo==="total"?"Some tudo o que gastou no período e lance de uma vez. Exemplo: gastei R$ 150 nessa semana.":"Exemplo: um lanche, uma corrida, uma compra."}</span></div>`:""}
     ${g&&formModo==="total"?`<div class="row" style="gap:10px;align-items:flex-start"><div class="field" style="flex:1 1 140px"><label for="f-ini">De</label><input id="f-ini" type="date" value="${inicioSemana()}"></div><div class="field" style="flex:1 1 140px"><label for="f-data">Até</label><input id="f-data" type="date" value="${today()}"></div></div>`
       :`<div class="field"><label for="f-data">Data</label><input id="f-data" type="date" value="${today()}"></div>`}
+    ${!g?`<div class="field"><label id="lb-rep">Essa entrada se repete?</label><div class="chips" role="group" aria-labelledby="lb-rep" data-grupo="f-rep"><button type="button" data-val="uma" aria-pressed="true">Só desta vez</button><button type="button" data-val="ciclo" aria-pressed="false">Todo ciclo, nesse dia</button></div><span class="hint">Todo ciclo: o app lança sozinho nos próximos ciclos, no mesmo dia do mês.</span></div>`:""}
     ${g?`<p class="hint" style="margin:0">Aluguel, academia e outras contas fixas não entram aqui. Cadastre em Ajustes, em Gastos fixos, e marque como pago na tela da semana.</p>`:""}
     <div id="f-err" class="err" hidden></div>
     <button class="btn" type="submit">${g?"Registrar gasto":"Registrar entrada"}</button>
+    <button type="button" class="btn ghost" data-act="ir-importar">Importar extrato do banco</button>
+    ${g&&formModo==="um"?frequentesHTML():""}
   </form>`;
 }
 
@@ -719,6 +858,7 @@ function renderAjustes(){
       <button class="btn" type="submit">Salvar ajustes</button>
     </div>
   </form>
+  ${recAjustesHTML()}
   <div class="card section">
     <h2>Gastos fixos</h2>
     <p class="hint" style="margin:0">Contas que se repetem todo ciclo com valor parecido e saem do seu dinheiro: aluguel, internet, academia, assinaturas. Elas são descontadas antes de dividir pelas semanas, então pagar o aluguel não estoura a semana. Se outra pessoa paga a conta, não coloque aqui.</p>
@@ -782,6 +922,7 @@ function renderInicio(){
     <div class="field"><label for="o-dia">Em que dia o dinheiro costuma entrar?</label><select id="o-dia">${Array.from({length:28},(_,i)=>i+1).map(n=>`<option value="${n}" ${n===cfg.diaInicio?"selected":""}>Dia ${n}</option>`).join("")}</select><span class="hint">O ciclo é o seu mês do dinheiro: começa no dia em que o dinheiro cai e vai até a véspera desse dia no mês seguinte. Exemplo: se cai no dia 5, o ciclo vai de 5/11 a 4/12. Se o dinheiro vem de mais de um lugar, escolha o dia do valor principal.</span></div>
     <div class="field"><label for="o-valor">Quanto entra neste ciclo, somando tudo?</label><div class="money"><span>R$</span><input id="o-valor" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div></div>
     <div class="field"><label for="o-desc">De onde vem?</label><input id="o-desc" type="text" placeholder="Ex.: bolsa e mesada" autocomplete="off"></div>
+    <div class="field"><label id="lb-orep">Esse valor entra todo ciclo?</label><div class="chips" role="group" aria-labelledby="lb-orep" data-grupo="o-rep"><button type="button" data-val="ciclo" aria-pressed="true">Sim, todo ciclo</button><button type="button" data-val="uma" aria-pressed="false">Só desta vez</button></div><span class="hint">Se sim, o app lança sozinho nos próximos ciclos. Dá pra mudar em Ajustes.</span></div>
     <div class="field"><label for="o-guardar">Quanto você quer guardar por ciclo?</label><div class="money"><span>R$</span><input id="o-guardar" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div><span class="hint">É o que você separa para juntar, como uma poupança ou um porquinho. Esse valor não entra nas semanas. Pode ser zero.</span></div>
     <div class="field"><label for="o-margem">Quanto deixar de reserva para imprevistos?</label><div class="money"><span>R$</span><input id="o-margem" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div><span class="hint">Reserva é um dinheiro separado que você só usa se acontecer algo fora do plano, como remédio, conserto ou uma passagem de última hora. Também não entra nas semanas. Pode ser zero.</span></div>
     <div class="field"><label>Você tem gastos fixos?</label><span class="hint">Contas que se repetem todo ciclo com valor parecido e saem do seu dinheiro: aluguel, internet, academia, assinaturas. Elas são descontadas antes de dividir pelas semanas, então pagar o aluguel não estoura a semana. Se outra pessoa paga a conta, não coloque aqui.</span><div id="o-fixos" class="fx-list"></div><div><button type="button" class="btn ghost sm" data-act="o-add-fixo">+ Adicionar gasto fixo</button></div></div>
@@ -872,19 +1013,21 @@ function updatePreview(){
 }
 
 function render(){
-  if(fecharPote()) save();
+  const m1=fecharPote(), m2=lancarRecorrentes(); if(m1||m2) save();
   const cur=cycleOf(today(),state.config.diaInicio).start;
   Object.keys(state.casal.descontos).forEach(x=>{ if(x<cur) delete state.casal.descontos[x]; });
-  const map = {inicio:renderInicio, semana:renderSemana, registrar:renderRegistrar, historico:renderHistorico, ajustes:renderAjustes};
+  const map = {importar:renderImportar, inicio:renderInicio, semana:renderSemana, registrar:renderRegistrar, historico:renderHistorico, ajustes:renderAjustes};
   app.innerHTML = map[tab]();
   if(tab==="inicio") updatePreview();
   if(tab==="ajustes") updatePotAjustes();
   document.querySelectorAll(".tabs button").forEach(b=> b.setAttribute("aria-current", b.dataset.tab===tab ? "page" : "false"));
 }
 function go(t){ tab=t; poteUI=null; render(); window.scrollTo(0,0); }
-function toast(msg){
+function toast(msg, acao, fn){
   let el=document.querySelector(".toast"); if(!el){ el=document.createElement("div"); el.className="toast"; el.setAttribute("role","status"); document.body.appendChild(el); }
-  el.textContent=msg; el.hidden=false; clearTimeout(toastTimer); toastTimer=setTimeout(()=>{el.hidden=true;},2200);
+  el.textContent=msg;
+  if(acao){ const bt=document.createElement("button"); bt.type="button"; bt.className="toast-act"; bt.textContent=acao; bt.onclick=()=>{ el.hidden=true; fn(); }; el.appendChild(bt); }
+  el.hidden=false; clearTimeout(toastTimer); toastTimer=setTimeout(()=>{el.hidden=true;}, acao?5000:2200);
 }
 function parseMoney(s){
   s=String(s||"").trim().replace(/\s|R\$/g,"");
@@ -918,6 +1061,15 @@ app.addEventListener("click",e=>{
     const [tp,id]=b.dataset.del.split(":"); const arr = tp==="entrada"?state.entradas: tp==="fatura"?state.faturas : state.gastos;
     const i=arr.findIndex(x=>x.id===id); if(i>-1) arr.splice(i,1); save(); render(); toast("Registro apagado"); return;
   }
+  if(b.dataset.freq!=null){
+    const g=frequentes()[+b.dataset.freq]; if(!g) return;
+    leaveExample();
+    const novo={id:uid(), data:today(), valor:g.valor, desc:g.desc, origem:g.origem, ...(g.dono?{dono:g.dono}:{})};
+    state.gastos.push(novo); save(); render();
+    toast(`${g.desc} · ${brl(g.valor)} registrado`, "Desfazer", ()=>{ state.gastos=state.gastos.filter(x=>x.id!==novo.id); save(); render(); toast("Desfeito"); });
+    return;
+  }
+  if(b.dataset.recDel){ state.recorrentes=state.recorrentes.filter(x=>x.id!==b.dataset.recDel); save(); render(); toast("Entrada removida"); return; }
   if(b.dataset.fatpago){ const f=(state.faturas||[]).find(x=>x.id===b.dataset.fatpago); if(f){ f.pago=!f.pago; save(); render(); } return; }
   if(b.dataset.pago){
     const k=cycleOf(today(),state.config.diaInicio).start; state.pagos=state.pagos||{}; const arr=state.pagos[k]=state.pagos[k]||[];
@@ -934,6 +1086,15 @@ app.addEventListener("click",e=>{
   else if(a==="o-del-fixo"){ b.closest(".fx").remove(); updatePreview(); }
   else if(a==="ir-instalar"){ go("ajustes"); const el=document.getElementById("instalar"); if(el) el.scrollIntoView(); }
   else if(a==="instalar" && deferredPrompt){ deferredPrompt.prompt(); deferredPrompt.userChoice.then(()=>{ deferredPrompt=null; render(); }); }
+  else if(a==="rec-ok"){ state.avisoRec=""; save(); render(); }
+  else if(a==="ir-importar"){ importLista=null; go("importar"); }
+  else if(a==="imp-limpar"){ importLista=null; render(); }
+  else if(a==="imp-ok"){
+    const sel=importLista?importLista.filter(x=>x.marcado):[]; if(!sel.length){ toast("Marque pelo menos um lançamento"); return; }
+    leaveExample();
+    sel.forEach(x=>{ if(x.tipo==="gasto") state.gastos.push({id:uid(), data:x.data, valor:x.valor, desc:x.desc, origem:x.origem, imp:x.key}); else state.entradas.push({id:uid(), data:x.data, valor:x.valor, desc:x.desc, imp:x.key}); });
+    importLista=null; save(); go("semana"); toast(`${sel.length} ${sel.length===1?"lançamento importado":"lançamentos importados"}`);
+  }
   else if(a==="nova-fatura"){ formTipo="fatura"; go("registrar"); }
   else if(a==="gasto-pote"){ formTipo="gasto"; formModo="um"; formOrigem="pote"; go("registrar"); }
   else if(a==="aviso-ok"){ state.casal.aviso=""; save(); render(); }
@@ -968,6 +1129,9 @@ function restore(txt){
 app.addEventListener("input",e=>{ if(e.target.closest("#ob")) updatePreview(); if(e.target.closest("#pote-form")) updatePotAjustes(); });
 app.addEventListener("change",e=>{
   if(e.target.id==="o-dia") updatePreview();
+  if(e.target.dataset.imp!=null && importLista){ const x=importLista[+e.target.dataset.imp]; x.marcado=e.target.checked; e.target.closest(".imp").classList.toggle("off",!x.marcado); const ok=document.getElementById("imp-ok"); if(ok) ok.textContent=impBotao(); }
+  if(e.target.dataset.impOrig!=null && importLista) importLista[+e.target.dataset.impOrig].origem=e.target.value;
+  if(e.target.id==="imp-file" && e.target.files[0]) lerArquivo(e.target.files[0]);
   if(e.target.id==="bk-file" && e.target.files[0]){ const r=new FileReader(); r.onload=()=>restore(String(r.result)); r.readAsText(e.target.files[0]); }
 });
 
@@ -987,7 +1151,9 @@ app.addEventListener("submit",e=>{
     leaveExample();
     const antes = formTipo==="gasto" && formOrigem==="pote" ? estadoPote() : null;
     if(formTipo==="gasto") state.gastos.push({id:uid(), data, valor, desc, origem:formOrigem, ...(dono?{dono}:{}), ...(ini&&ini<data?{ini}:{})});
-    else state.entradas.push({id:uid(), data, valor, desc});
+    else { const e={id:uid(), data, valor, desc}, rep=document.querySelector('[data-grupo="f-rep"] [aria-pressed="true"]');
+      if(rep && rep.dataset.val==="ciclo"){ const rc={id:uid(), desc:desc||"Entrada", valor, dia:Math.min(28,Number(data.slice(8,10)))}; state.recorrentes.push(rc); state.lancadas[rc.id+"|"+cycleOf(data,state.config.diaInicio).start]=1; e.rec=rc.id; }
+      state.entradas.push(e); }
     save();
     let msg = formTipo==="gasto" ? `Gasto de ${brl(valor)} registrado` : `Entrada de ${brl(valor)} registrada`;
     if(antes){ const dep=estadoPote(); if(dep){
@@ -1012,8 +1178,19 @@ app.addEventListener("submit",e=>{
     state.config.diaInicio=dia; state.config.guardar=g; state.config.margem=m;
     state.fixos=fixos.map((f,i)=>({id:uid(), nome:f.nome||`Gasto fixo ${i+1}`, valor:f.valor}));
     if(namora) ativarPote(pv);
-    state.entradas.push({id:uid(), data:cycleOf(today(),dia).start, valor:v, desc:document.getElementById("o-desc").value.trim()||"Entrada do ciclo"});
+    const oDesc=document.getElementById("o-desc").value.trim()||"Entrada do ciclo", cs=cycleOf(today(),dia).start, oe={id:uid(), data:cs, valor:v, desc:oDesc};
+    const oRep=document.querySelector('[data-grupo="o-rep"] [aria-pressed="true"]');
+    if(!oRep || oRep.dataset.val==="ciclo"){ const rc={id:uid(), desc:oDesc, valor:v, dia}; state.recorrentes.push(rc); state.lancadas[rc.id+"|"+cs]=1; oe.rec=rc.id; }
+    state.entradas.push(oe);
     save(); go("semana"); toast("Ciclo montado. Agora é só registrar os gastos.");
+  }
+  else if(f.id==="recf"){
+    const n=document.getElementById("rc-nome").value.trim(), v=parseMoney(document.getElementById("rc-valor").value), dia=Number(document.getElementById("rc-dia").value)||5;
+    if(!n || !(v>0)){ toast("Preencha o nome e o valor"); return; }
+    leaveExample();
+    const rc={id:uid(), desc:n, valor:v, dia}, c=cycleOf(today(),state.config.diaInicio);
+    if(dataNoCiclo(dia,c)<=today()) state.lancadas[rc.id+"|"+c.start]=1;
+    state.recorrentes.push(rc); save(); render(); toast("Entrada que se repete adicionada");
   }
   else if(f.id==="fat"){
     const err=document.getElementById("ft-err"), valor=parseMoney(document.getElementById("ft-valor").value);
@@ -1056,11 +1233,15 @@ app.addEventListener("submit",e=>{
   }
 });
 
+if(fecharPote() | lancarRecorrentes()) save();
 if(!state.exemplo && !state.entradas.length && !state.gastos.length) tab="inicio";
+const ATALHOS={"#gasto":()=>{formTipo="gasto"; tab="registrar";}, "#fatura":()=>{formTipo="fatura"; tab="registrar";}, "#importar":()=>{tab="importar";}};
+if(ATALHOS[location.hash]){ ATALHOS[location.hash](); try{ history.replaceState(null,"",location.pathname+location.search); }catch(e){} }
+window.addEventListener("hashchange",()=>{ if(ATALHOS[location.hash]){ ATALHOS[location.hash](); try{ history.replaceState(null,"",location.pathname+location.search); }catch(e){} poteUI=null; render(); } });
 save();
 render();
 try{ if("serviceWorker" in navigator && window.self===window.top && location.protocol==="https:") navigator.serviceWorker.register("./sw.js").catch(()=>{}); }catch(e){}
-window.__grana = {compute, cycleOf, weeksOf, pattern, estadoPote, get state(){return state;}};
+window.__grana = {compute, cycleOf, weeksOf, pattern, estadoPote, frequentes, get state(){return state;}};
 })();
 </script>
 
