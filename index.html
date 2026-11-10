@@ -608,7 +608,7 @@ function potCardHTML(){
         : low ? `<div class="pote-alert">Resta só ${brl(e.saldo)} no pote, menos de 20% do total.</div>` : ""}
       ${e.gastos>0.005 ? `<div class="row" style="justify-content:space-between;gap:8px"><span class="small">Vocês estão gastando <b>${brl(e.ritmo)}</b> por semana</span><span class="pill ${ritmoOk?"ok":"warn"}">${ritmoOk?"dentro do combinado":"acima dos "+brl(k.semanal)}</span></div>`
         : `<span class="small muted">Nenhum gasto do casal neste ciclo ainda.</span>`}
-      <div class="hint">Depósito deste ciclo: ${brl(e.total)}${k.modo==="dividimos" ? ` (sua parte ${brl(e.minha)} + parte ${esc(deNome(k.apelido))} ${brl(e.amor)})` : ", tudo do seu dinheiro"}.${e.guardado>0.005 ? ` Inclui ${brl(e.guardado)} guardados de ciclos anteriores.` : e.guardado<-0.005 ? ` Já desconta ${brl(-e.guardado)} que passou no ciclo anterior.` : ""}</div>
+      <div class="hint">Depósito deste ciclo: ${brl(e.total)}${k.modo==="dividimos" ? ` (você colocou ${brl(e.minha)} e ${esc(amor())} colocou ${brl(e.amor)})` : ", tudo do seu dinheiro"}.${e.guardado>0.005 ? ` Inclui ${brl(e.guardado)} guardados de ciclos anteriores.` : e.guardado<-0.005 ? ` Já desconta ${brl(-e.guardado)} que passou no ciclo anterior.` : ""}</div>
       <div><button type="button" class="btn pote sm" data-act="gasto-pote">+ Gasto do casal</button></div>
     </div></section>`;
 }
@@ -764,8 +764,8 @@ function potFieldsHTML(p, v){
   v=Object.assign({semanal:0, modo:"eu", apelido:"", sobra:"guardar"}, v||{});
   const val = v.semanal>0 ? Number(v.semanal).toFixed(2).replace(".",",") : "";
   return `<p class="hint" style="margin:0">${POTE_EXPLICA}</p>
-  <div class="field"><label for="${p}-p-sem">Quanto vocês querem gastar juntos por semana?</label><div class="money"><span>R$</span><input id="${p}-p-sem" type="text" inputmode="decimal" placeholder="60,00" value="${val}" autocomplete="off"></div></div>
-  <div class="field"><label id="${p}-lb-modo">A pessoa com quem você namora também vai colocar dinheiro?</label><div class="chips" role="group" aria-labelledby="${p}-lb-modo" data-grupo="${p}-modo"><button type="button" data-val="eu" aria-pressed="${v.modo!=="dividimos"}">Só eu</button><button type="button" data-val="dividimos" aria-pressed="${v.modo==="dividimos"}">Dividimos</button></div><span class="hint">Em "Dividimos", cada pessoa coloca metade. Só a sua metade sai do seu dinheiro.</span></div>
+  <div class="field"><label for="${p}-p-sem">Quanto vocês querem gastar juntos por semana, no total?</label><div class="money"><span>R$</span><input id="${p}-p-sem" type="text" inputmode="decimal" placeholder="60,00" value="${val}" autocomplete="off"></div><span class="hint">É o valor do casal, somando tudo, e não só a sua parte.</span></div>
+  <div class="field"><label id="${p}-lb-modo">Quem coloca esse dinheiro no pote?</label><div class="chips" role="group" aria-labelledby="${p}-lb-modo" data-grupo="${p}-modo"><button type="button" data-val="eu" aria-pressed="${v.modo!=="dividimos"}">Só eu, o valor todo</button><button type="button" data-val="dividimos" aria-pressed="${v.modo==="dividimos"}">Meio a meio com meu amor</button></div><span class="hint" id="${p}-p-modo-hint"></span></div>
   <div class="field"><label for="${p}-p-apelido">Apelido do seu amor (opcional)</label><input id="${p}-p-apelido" type="text" maxlength="24" value="${esc(v.apelido)}" placeholder="Ex.: Mo" autocomplete="off"><span class="hint">Só aparece no seu app. Nenhum outro dado da outra pessoa é guardado.</span></div>
   <div class="field"><label id="${p}-lb-sobra">No fim do ciclo, o que sobrar no pote:</label><div class="chips" role="group" aria-labelledby="${p}-lb-sobra" data-grupo="${p}-sobra"><button type="button" data-val="guardar" aria-pressed="${v.sobra!=="voltar"}">Fica guardado pra um programa maior</button><button type="button" data-val="voltar" aria-pressed="${v.sobra==="voltar"}">Volta pro meu orçamento</button></div></div>
   <div class="pote-calc num" id="${p}-p-calc" aria-live="polite"></div>`;
@@ -780,11 +780,21 @@ function potCalcHTML(v, c, inicio){
   const k=calcPote(v, c, inicio), sem=(k.dias/7).toFixed(1).replace(".",",");
   return `<span class="label">Depósito no pote</span><div class="pote-big">${brl(k.total)}</div>
     <span class="small">${brl(v.semanal)} por semana × ${sem} semanas ${k.cheio?"do ciclo":"que faltam no ciclo"} (até ${ddmm(c.end)}).</span>
-    <span class="small">${v.modo==="dividimos" ? `Sua parte: <b>${brl(k.minha)}</b> · parte ${esc(deNome(v.apelido))}: <b>${brl(k.amor)}</b>.` : `Sai tudo do seu dinheiro: <b>${brl(k.minha)}</b>.`} Sai de uma vez, ${k.cheio?"no dia em que o seu dinheiro entra":"a partir de hoje"}, e não entra no dinheiro das semanas.</span>`;
+    <span class="small">${v.modo==="dividimos" ? `Você coloca <b>${brl(k.minha)}</b> e ${esc(v.apelido||"seu amor")} coloca <b>${brl(k.amor)}</b>.` : `Sai tudo do seu dinheiro: <b>${brl(k.minha)}</b>.`} Sai de uma vez, ${k.cheio?"no dia em que o seu dinheiro entra":"a partir de hoje"}, e não entra no dinheiro das semanas.</span>`;
+}
+// explica em reais quem coloca quanto, conforme a pessoa preenche
+function modoHint(p, v){
+  const el=document.getElementById(`${p}-p-modo-hint`); if(!el) return;
+  const quem=esc(v.apelido||"seu amor"), s=v.semanal>0, meio=r2(v.semanal/2);
+  el.innerHTML = v.modo==="dividimos"
+    ? (s ? `Por semana, você coloca <b>${brl(meio)}</b> e ${quem} coloca <b>${brl(v.semanal-meio)}</b>, somando ${brl(v.semanal)} no pote. Só a sua parte sai do seu dinheiro.`
+         : `Você coloca metade e ${quem} coloca a outra metade. Só a sua parte sai do seu dinheiro.`)
+    : (s ? `Por semana, você coloca os <b>${brl(v.semanal)}</b> inteiros. Tudo sai do seu dinheiro.`
+         : `Você coloca o valor todo. Tudo sai do seu dinheiro.`);
 }
 function updatePotAjustes(){
   const el=document.getElementById("a-p-calc"); if(!el) return;
-  const k=state.casal; el.innerHTML=potCalcHTML(lerPote("a"), cycleOf(today(),state.config.diaInicio), k.ativo?k.inicio:today());
+  const k=state.casal, pv=lerPote("a"); modoHint("a",pv); el.innerHTML=potCalcHTML(pv, cycleOf(today(),state.config.diaInicio), k.ativo?k.inicio:today());
 }
 function poteAjustesHTML(){
   const k=state.casal, aberto = k.ativo || poteUI==="form";
@@ -817,7 +827,7 @@ function updatePreview(){
   const fx=lerFixosOb().reduce((a,f)=>a+f.valor,0);
   const c=cycleOf(today(),dia), dias=daysIncl(c.start,c.end);
   let pm=0;
-  if(namoraOb()){ const pv=lerPote("o"), pc=document.getElementById("o-p-calc"); if(pc) pc.innerHTML=potCalcHTML(pv,c,today()); if(pv.semanal>0) pm=calcPote(pv,c,today()).minha; }
+  if(namoraOb()){ const pv=lerPote("o"), pc=document.getElementById("o-p-calc"); modoHint("o",pv); if(pc) pc.innerHTML=potCalcHTML(pv,c,today()); if(pv.semanal>0) pm=calcPote(pv,c,today()).minha; }
   const sem=Math.max(0,v-g-m-fx-pm), porSemana=sem*7/dias;
   if(!(v>0)){ el.innerHTML=`<span class="label">Seu dinheiro por semana</span><div class="calc">Digite quanto entra para ver o cálculo.</div>`; return; }
   el.innerHTML=`<span class="label">Seu dinheiro por semana</span><div class="big">${brl(porSemana)}</div>
