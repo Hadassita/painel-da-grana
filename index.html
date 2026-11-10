@@ -129,7 +129,7 @@ button{cursor:pointer}
 
 /* formulário */
 form{display:flex;flex-direction:column;gap:16px}
-.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--chip);border-radius:12px;padding:4px;gap:4px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);background:var(--chip);border-radius:12px;padding:4px;gap:4px}
 .seg button{border:0;background:transparent;border-radius:9px;padding:10px;font-weight:600;color:var(--muted)}
 .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 .field{display:flex;flex-direction:column;gap:6px}
@@ -229,6 +229,12 @@ textarea{min-height:120px;font-size:13px;font-family:ui-monospace,Menlo,monospac
 .switch[aria-checked="true"]{background:var(--pote)}
 .switch[aria-checked="true"]::after{transform:translateX(20px)}
 .split.odd > div:first-child{grid-column:1/-1}
+.fixo .n small{display:block;font-size:12px;color:var(--muted)}
+.fixo.fat.ok .n{text-decoration:none}
+.fixo.fat.ok .fn{text-decoration:line-through}
+.fixo .n small.st-warn{color:var(--warn);font-weight:600}
+.fixo .n small.st-bad{color:var(--bad);font-weight:600}
+.dot.fatura{background:transparent;box-shadow:inset 0 0 0 2px var(--mil-2)}
 details{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 16px}
 details summary{cursor:pointer;font-weight:600}
 details[open] summary{margin-bottom:10px}
@@ -307,11 +313,11 @@ function save(){
   catch(e){ memOnly = true; }
 }
 function freshState(){
-  return {config:{diaInicio:5, guardar:0, margem:0}, tetos:{}, fixos:[], pagos:{}, casal:casalPadrao(), entradas:[], gastos:[], exemplo:false};
+  return {config:{diaInicio:5, guardar:0, margem:0}, tetos:{}, fixos:[], pagos:{}, casal:casalPadrao(), faturas:[], entradas:[], gastos:[], exemplo:false};
 }
 // pote do casal: da outra pessoa, só um apelido opcional
 function casalPadrao(){ return {ativo:false, apelido:"", semanal:0, modo:"eu", sobra:"guardar", inicio:"", ciclo:"", guardado:0, descontos:{}, aviso:""}; }
-function normalizar(s){ s.tetos=s.tetos||{}; s.fixos=s.fixos||[]; s.pagos=s.pagos||{}; s.casal=Object.assign(casalPadrao(), s.casal||{}); s.casal.descontos=s.casal.descontos||{}; return s; }
+function normalizar(s){ s.tetos=s.tetos||{}; s.fixos=s.fixos||[]; s.pagos=s.pagos||{}; s.casal=Object.assign(casalPadrao(), s.casal||{}); s.casal.descontos=s.casal.descontos||{}; s.faturas=s.faturas||[]; return s; }
 function exampleState(){
   const st = freshState(); st.exemplo = true; st.config.guardar = 300; st.config.margem = 100;
   st.tetos = {"Pai":300};
@@ -339,6 +345,7 @@ function exampleState(){
     d=addDays(d,1);
   }
   st.pagos = {[c1.start]:["fx1"]};
+  st.faturas = [{id:"ft1", desc:"Fatura do cartão (parcelas)", valor:120, venc:addDays(c1.start,9), criado:c1.start, pago:false}];
   st.casal = Object.assign(casalPadrao(), {ativo:true, semanal:80, modo:"dividimos", sobra:"guardar", inicio:c1.start, ciclo:c1.start, guardado:45});
   [[0,"Pizza",64],[3,"Cinema",46]].forEach(([n,desc,v])=>{ const d=addDays(c1.start,n); if(d<=t) st.gastos.push({id:uid(), data:d, valor:v, desc, origem:"pote"}); });
   return st;
@@ -471,12 +478,15 @@ function compute(refDate){
   const margem = Math.min(base, cfg.margem||0);
   const ded = deducoesPote(c);
   const totalPote = sum(ded, d=>d.valor);
+  const fats = (state.faturas||[]).filter(f=>f.venc>=c.start && f.venc<=c.end);
+  const dedFat = fats.map(f=>({desde: f.criado>c.start ? (f.criado<c.end?f.criado:c.end) : c.start, valor:f.valor}));
+  const totalFaturas = sum(fats, f=>f.valor);
   const distBruto = base - margem;
-  const dist = distBruto - totalPote;
+  const dist = distBruto - totalPote - totalFaturas;
   const totalDias = daysIncl(c.start,c.end);
   const weeks = weeksOf(c).map(w=>{
     const gw = gastos.filter(g=>contaNoEnvelope(g) && g.data>=w.ini && g.data<=w.fim);
-    return {...w, env: distBruto*w.dias/totalDias - descontoPoteSemana(ded, w, c), gasto: sum(gw,g=>g.valor)};
+    return {...w, env: distBruto*w.dias/totalDias - descontoPoteSemana(ded.concat(dedFat), w, c), gasto: sum(gw,g=>g.valor)};
   });
   let curIdx = weeks.findIndex(w=>t>=w.ini && t<=w.fim);
   let carry=0;
@@ -486,7 +496,7 @@ function compute(refDate){
   const terc = {};
   gastos.filter(g=>g.origem==="terceiros").forEach(g=>{ const k=(g.dono||"Sem nome").trim()||"Sem nome"; terc[k]=(terc[k]||0)+g.valor; });
   Object.keys(state.tetos||{}).forEach(k=>{ if(!(k in terc)) terc[k]=0; });
-  return {c, entradas, gastos, totalEnt, totalFixos, totalPote, base, margem, dist, weeks, curIdx, proprio, cartao, terc};
+  return {c, entradas, gastos, totalEnt, totalFixos, totalPote, totalFaturas, base, margem, dist, weeks, curIdx, proprio, cartao, terc};
 }
 
 /* ---------- interface ---------- */
@@ -542,12 +552,9 @@ function renderSemana(){
   html += potCardHTML();
   if(r.totalEnt>0){
     html += `<section class="section"><div class="sec-head"><h2>Este ciclo</h2><span class="small muted num">entrou ${brl(r.totalEnt)}</span></div>
-      <div class="split num${r.totalPote>0.005?" odd":""}">
-        <div><span class="label">Para as semanas</span><b>${brl(r.dist)}</b></div>
-        <div><span class="label">Guardar</span><b>${brl(state.config.guardar||0)}</b></div>
-        <div><span class="label">Reserva</span><b>${brl(r.margem)}</b></div>
-        <div><span class="label">Gastos fixos</span><b>${brl(r.totalFixos)}</b></div>
-        ${r.totalPote>0.005?`<div><span class="label">Pote do casal</span><b>${brl(r.totalPote)}</b></div>`:""}
+      ${(()=>{ const tl=[["Para as semanas",r.dist],["Guardar",state.config.guardar||0],["Reserva",r.margem],["Gastos fixos",r.totalFixos]];
+        if(r.totalPote>0.005) tl.push(["Pote do casal",r.totalPote]); if(r.totalFaturas>0.005) tl.push(["Faturas",r.totalFaturas]);
+        return `<div class="split num${tl.length%2?" odd":""}">`+tl.map(([l,v])=>`<div><span class="label">${l}</span><b>${brl(v)}</b></div>`).join(""); })()}
       </div>
       <div class="weeks num">${r.weeks.map((x,i)=>{
         let st;
@@ -560,6 +567,7 @@ function renderSemana(){
     </section>`;
   }
 
+  html += faturasHTML(r);
   // gastos fixos: checklist do ciclo
   if((state.fixos||[]).length){
     const pagos=(state.pagos||{})[r.c.start]||[], np=state.fixos.filter(f=>pagos.includes(f.id)).length;
@@ -589,6 +597,25 @@ function renderSemana(){
   return html;
 }
 
+function statusFatura(f, c){
+  const t=today();
+  if(f.pago) return ["", `paga · vencia ${ddmm(f.venc)}`];
+  if(f.venc>c.end) return ["", `vence ${ddmm(f.venc)} · reservada no próximo ciclo`];
+  if(f.venc<t) return ["st-bad", `venceu em ${ddmm(f.venc)}`];
+  if(f.venc===t) return ["st-warn", "vence hoje"];
+  const d=daysIncl(t,f.venc)-1;
+  return d<=7 ? [d<=3?"st-warn":"", `vence em ${d} ${d===1?"dia":"dias"} · ${ddmm(f.venc)}`] : ["", `vence ${ddmm(f.venc)}`];
+}
+function faturasHTML(r){
+  const lista=(state.faturas||[]).filter(f=>f.venc>=r.c.start || !f.pago).sort((a,b)=>a.venc<b.venc?-1:a.venc>b.venc?1:0);
+  const head=`<div class="sec-head"><h2>Faturas e contas com data</h2>`;
+  if(!lista.length) return r.entradas.length ? `<section class="section">${head}</div><div class="card row" style="justify-content:space-between"><span class="small muted" style="flex:1 1 200px">Tem fatura ou boleto pra pagar numa data? Reserve aqui e ele não pesa numa semana só.</span><button type="button" class="btn ghost sm" data-act="nova-fatura">+ Adicionar</button></div></section>` : "";
+  const np=lista.filter(f=>f.pago).length;
+  return `<section class="section">${head}<span class="small muted num">${np} de ${lista.length} ${lista.length===1?"paga":"pagas"}</span></div>
+    <div class="card fixlist">${lista.map(f=>{ const [cl,st]=statusFatura(f, r.c); return `<button type="button" class="fixo fat ${f.pago?"ok":""}" data-fatpago="${f.id}" aria-pressed="${!!f.pago}"><span class="ck" aria-hidden="true">${f.pago?"✓":""}</span><span class="n"><span class="fn">${esc(f.desc||"Fatura")}</span><small class="${cl}">${st}</small></span><b class="num">${brl(f.valor)}</b></button>`; }).join("")}</div>
+    <p class="hint" style="margin:0">Já reservadas: saem aos poucos das semanas que faltam, e não de uma vez na semana em que vencem. Toque para marcar quando pagar.</p>
+    <div><button type="button" class="btn ghost sm" data-act="nova-fatura">+ Adicionar fatura</button></div></section>`;
+}
 function avisoPote(){
   const a=state.casal && state.casal.aviso;
   return a ? `<div class="banner"><span><b>Pote do casal.</b> ${esc(a)}</span><button class="btn sm" type="button" data-act="aviso-ok">Entendi</button></div>` : "";
@@ -618,17 +645,26 @@ function renderRegistrar(){
   const donos = [...new Set(state.gastos.filter(g=>g.origem==="terceiros"&&g.dono).map(g=>g.dono).concat(Object.keys(state.tetos||{})))];
   const descs = [...new Set(state.gastos.slice(-60).map(g=>g.desc).filter(Boolean))].slice(-15);
   const g = formTipo==="gasto";
+  const seg = `<div class="seg" role="group" aria-label="Tipo">${[["gasto","Gasto"],["entrada","Entrada"],["fatura","Fatura"]].map(([k,l])=>`<button type="button" data-tipo="${k}" aria-pressed="${formTipo===k}">${l}</button>`).join("")}</div>`;
+  if(formTipo==="fatura") return header("Novo registro") + `
+  <form id="fat" novalidate>
+    ${seg}
+    <div class="field"><label for="ft-valor">Valor</label><div class="money"><span>R$</span><input id="ft-valor" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div></div>
+    <div class="field"><label for="ft-desc">Qual fatura ou conta?</label><input id="ft-desc" type="text" placeholder="Ex.: fatura Nubank, boleto da faculdade" autocomplete="off"></div>
+    <div class="field"><label for="ft-venc">Vence em</label><input id="ft-venc" type="date"></div>
+    <p class="hint" style="margin:0">O valor fica reservado e sai aos poucos das semanas que faltam até o fim do ciclo, em vez de pesar só na semana do vencimento. Se o vencimento cair no próximo ciclo, ele é reservado lá.</p>
+    <p class="hint" style="margin:0">Se você já registrou as compras desse cartão aqui como "Meu cartão", não registre a fatura: elas já saíram das semanas. Se registrou só uma parte, coloque só o que falta.</p>
+    <div id="ft-err" class="err" hidden></div>
+    <button class="btn" type="submit">Reservar fatura</button>
+  </form>`;
   return header("Novo registro") + `
   <form id="f" novalidate>
-    <div class="seg" role="group" aria-label="Tipo">
-      <button type="button" data-tipo="gasto" aria-pressed="${g}">Gasto</button>
-      <button type="button" data-tipo="entrada" aria-pressed="${!g}">Entrada</button>
-    </div>
+    ${seg}
     <div class="field"><label for="f-valor">Valor</label><div class="money"><span>R$</span><input id="f-valor" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div></div>
     <div class="field"><label for="f-desc">${g?"Com o quê?":"De onde veio?"}</label><input id="f-desc" type="text" list="dl-desc" placeholder="${g?(formModo==="total"?"Ex.: gastos da semana, lanches":"Ex.: lanche, Uber, mercado"):"Ex.: bolsa, mesada, freela"}" autocomplete="off">
       <datalist id="dl-desc">${(g?descs:["Bolsa","Mesada","Pix da família","Salário","Freela"]).map(d=>`<option value="${esc(d)}">`).join("")}</datalist></div>
     ${g?`<div class="field"><label id="lb-origem">Pago com</label><div class="chips" role="group" aria-labelledby="lb-origem">${Object.entries(ORIGENS).filter(([k])=>k!=="pote"||casalAtivo()).map(([k,v])=>`<button type="button" data-origem="${k}" aria-pressed="${formOrigem===k}">${v}</button>`).join("")}</div>
-      <span class="hint">${formOrigem==="pote"?"Gasto de vocês dois, como comida, cinema, passeio ou delivery. Sai do pote do casal, não do seu dinheiro da semana.":formOrigem==="terceiros"?"Quando alguém pagou por você: o cartão dos pais, um Pix que veio só para isso, um empréstimo. Fica separado e não sai do seu dinheiro da semana.":formOrigem==="cartao"?"Sai do dinheiro da semana agora, porque a fatura vai ser paga com o seu dinheiro.":"Pix, débito ou dinheiro vivo."}</span></div>
+      <span class="hint">${formOrigem==="pote"?"Gasto de vocês dois, como comida, cinema, passeio ou delivery. Sai do pote do casal, não do seu dinheiro da semana.":formOrigem==="terceiros"?"Quando alguém pagou por você: o cartão dos pais, um Pix que veio só para isso, um empréstimo. Fica separado e não sai do seu dinheiro da semana.":formOrigem==="cartao"?"Sai do dinheiro da semana agora, porque a fatura vai ser paga com o seu dinheiro. Se preferir, não registre as compras e reserve só a fatura, na opção Fatura aqui em cima.":"Pix, débito ou dinheiro vivo."}</span></div>
       ${formOrigem==="terceiros"?`<div class="field"><label for="f-dono">Quem pagou?</label><input id="f-dono" type="text" list="dl-dono" placeholder="Ex.: Pai, Mãe, tia" autocomplete="off"><datalist id="dl-dono">${donos.map(d=>`<option value="${esc(d)}">`).join("")}</datalist></div>`:""}`:""}
     ${g?`<div class="field"><label id="lb-modo">Foi um gasto só ou o total de vários dias?</label><div class="chips" role="group" aria-labelledby="lb-modo"><button type="button" data-modo="um" aria-pressed="${formModo==="um"}">Um gasto</button><button type="button" data-modo="total" aria-pressed="${formModo==="total"}">Total de vários dias</button></div>
       <span class="hint">${formModo==="total"?"Some tudo o que gastou no período e lance de uma vez. Exemplo: gastei R$ 150 nessa semana.":"Exemplo: um lanche, uma corrida, uma compra."}</span></div>`:""}
@@ -644,16 +680,16 @@ function renderHistorico(){
   const base = cycleOf(today(), state.config.diaInicio);
   let ref = base.start; for(let i=0;i<histCycleOffset;i++){ ref = cycleOf(addDays(ref,-1), state.config.diaInicio).start; }
   const c = cycleOf(ref, state.config.diaInicio);
-  const items = state.gastos.map(g=>({...g,tipo:"gasto"})).concat(state.entradas.map(e=>({...e,tipo:"entrada"})))
+  const items = state.gastos.map(g=>({...g,tipo:"gasto"})).concat(state.entradas.map(e=>({...e,tipo:"entrada"}))).concat((state.faturas||[]).map(f=>({...f,data:f.venc,tipo:"fatura"})))
     .filter(x=>x.data>=c.start && x.data<=c.end).sort((a,b)=> a.data<b.data?1:a.data>b.data?-1:0);
   const anyOlder = state.gastos.concat(state.entradas).some(x=>x.data<c.start);
   const byDay = {}; items.forEach(x=>{ (byDay[x.data]=byDay[x.data]||[]).push(x); });
   let html = header("Histórico") + `<div class="nav-c"><button type="button" data-act="hist-prev" aria-label="Ciclo anterior" ${anyOlder?"":"disabled"}>‹</button><strong class="num">${ddmm(c.start)} a ${ddmm(c.end)}</strong><button type="button" data-act="hist-next" aria-label="Próximo ciclo" ${histCycleOffset>0?"":"disabled"}>›</button></div>`;
   if(!items.length) return html + `<div class="empty">Nada registrado neste ciclo.</div>`;
-  html += `<div class="row small muted"><span class="row" style="gap:6px"><i class="dot proprio"></i>Meu dinheiro</span><span class="row" style="gap:6px"><i class="dot cartao"></i>Meu cartão</span><span class="row" style="gap:6px"><i class="dot terceiros"></i>De outra pessoa</span>${items.some(x=>x.origem==="pote")?`<span class="row" style="gap:6px"><i class="dot pote"></i>Pote do casal</span>`:""}<span class="row" style="gap:6px"><i class="dot entrada"></i>Entrada</span></div>`;
+  html += `<div class="row small muted"><span class="row" style="gap:6px"><i class="dot proprio"></i>Meu dinheiro</span><span class="row" style="gap:6px"><i class="dot cartao"></i>Meu cartão</span><span class="row" style="gap:6px"><i class="dot terceiros"></i>De outra pessoa</span>${items.some(x=>x.tipo==="fatura")?`<span class="row" style="gap:6px"><i class="dot fatura"></i>Fatura</span>`:""}${items.some(x=>x.origem==="pote")?`<span class="row" style="gap:6px"><i class="dot pote"></i>Pote do casal</span>`:""}<span class="row" style="gap:6px"><i class="dot entrada"></i>Entrada</span></div>`;
   html += Object.keys(byDay).map(d=>`<div class="day"><h3>${longDay(d)}</h3>${byDay[d].map(x=>{
-    const sub = x.tipo==="entrada" ? "Entrada" : (x.origem==="terceiros" ? `Pago por ${esc(x.dono||"outra pessoa")}` : ORIGENS[x.origem]) + (x.ini && x.ini<x.data ? ` · total de ${ddmm(x.ini)} a ${ddmm(x.data)}` : "");
-    return `<div class="item"><i class="dot ${x.tipo==="entrada"?"entrada":x.origem}"></i><div class="t"><div>${esc(x.desc||"Sem descrição")}</div><small>${sub}</small></div><span class="val num ${x.tipo==="entrada"?"in":""}">${x.tipo==="entrada"?"+":""}${brl(x.valor)}</span><button type="button" class="del" data-del="${x.tipo}:${x.id}" aria-label="Apagar ${esc(x.desc)}">Apagar</button></div>`;
+    const sub = x.tipo==="fatura" ? `Fatura reservada · vence ${ddmm(x.venc)}${x.pago?" · paga":""}` : x.tipo==="entrada" ? "Entrada" : (x.origem==="terceiros" ? `Pago por ${esc(x.dono||"outra pessoa")}` : ORIGENS[x.origem]) + (x.ini && x.ini<x.data ? ` · total de ${ddmm(x.ini)} a ${ddmm(x.data)}` : "");
+    return `<div class="item"><i class="dot ${x.tipo==="entrada"?"entrada":x.tipo==="fatura"?"fatura":x.origem}"></i><div class="t"><div>${esc(x.desc||"Sem descrição")}</div><small>${sub}</small></div><span class="val num ${x.tipo==="entrada"?"in":""}">${x.tipo==="entrada"?"+":""}${brl(x.valor)}</span><button type="button" class="del" data-del="${x.tipo}:${x.id}" aria-label="Apagar ${esc(x.desc)}">Apagar</button></div>`;
   }).join("")}</div>`).join("");
   return html;
 }
@@ -879,9 +915,10 @@ app.addEventListener("click",e=>{
   }
   if(b.dataset.del){
     if(!b.classList.contains("confirm")){ b.classList.add("confirm"); b.textContent="Confirmar"; setTimeout(()=>{ if(b.isConnected){ b.classList.remove("confirm"); b.textContent="Apagar"; } },3000); return; }
-    const [tp,id]=b.dataset.del.split(":"); const arr = tp==="entrada"?state.entradas:state.gastos;
+    const [tp,id]=b.dataset.del.split(":"); const arr = tp==="entrada"?state.entradas: tp==="fatura"?state.faturas : state.gastos;
     const i=arr.findIndex(x=>x.id===id); if(i>-1) arr.splice(i,1); save(); render(); toast("Registro apagado"); return;
   }
+  if(b.dataset.fatpago){ const f=(state.faturas||[]).find(x=>x.id===b.dataset.fatpago); if(f){ f.pago=!f.pago; save(); render(); } return; }
   if(b.dataset.pago){
     const k=cycleOf(today(),state.config.diaInicio).start; state.pagos=state.pagos||{}; const arr=state.pagos[k]=state.pagos[k]||[];
     const i=arr.indexOf(b.dataset.pago); if(i>-1) arr.splice(i,1); else arr.push(b.dataset.pago);
@@ -897,6 +934,7 @@ app.addEventListener("click",e=>{
   else if(a==="o-del-fixo"){ b.closest(".fx").remove(); updatePreview(); }
   else if(a==="ir-instalar"){ go("ajustes"); const el=document.getElementById("instalar"); if(el) el.scrollIntoView(); }
   else if(a==="instalar" && deferredPrompt){ deferredPrompt.prompt(); deferredPrompt.userChoice.then(()=>{ deferredPrompt=null; render(); }); }
+  else if(a==="nova-fatura"){ formTipo="fatura"; go("registrar"); }
   else if(a==="gasto-pote"){ formTipo="gasto"; formModo="um"; formOrigem="pote"; go("registrar"); }
   else if(a==="aviso-ok"){ state.casal.aviso=""; save(); render(); }
   else if(a==="pote-switch"){ poteUI = casalAtivo() ? (poteUI==="desligar"?null:"desligar") : (poteUI==="form"?null:"form"); render(); const el=document.getElementById("pote"); if(el) el.scrollIntoView({block:"nearest"}); }
@@ -976,6 +1014,19 @@ app.addEventListener("submit",e=>{
     if(namora) ativarPote(pv);
     state.entradas.push({id:uid(), data:cycleOf(today(),dia).start, valor:v, desc:document.getElementById("o-desc").value.trim()||"Entrada do ciclo"});
     save(); go("semana"); toast("Ciclo montado. Agora é só registrar os gastos.");
+  }
+  else if(f.id==="fat"){
+    const err=document.getElementById("ft-err"), valor=parseMoney(document.getElementById("ft-valor").value);
+    const desc=document.getElementById("ft-desc").value.trim(), venc=document.getElementById("ft-venc").value;
+    const dia=state.config.diaInicio, c=cycleOf(today(),dia);
+    const erro=m=>{ err.textContent=m; err.hidden=false; };
+    if(!(valor>0)) return erro("Digite o valor da fatura, por exemplo 250,00.");
+    if(!venc) return erro("Escolha a data de vencimento.");
+    if(venc<c.start) return erro("Essa data é de um ciclo que já terminou. Se ainda vai pagar, use a data de hoje.");
+    leaveExample();
+    state.faturas.push({id:uid(), desc:desc||"Fatura", valor, venc, criado:today(), pago:false});
+    save(); formTipo="gasto"; go("semana");
+    toast(venc>c.end ? `Fatura de ${brl(valor)} reservada no ciclo que começa em ${ddmm(cycleOf(venc,dia).start)}` : `Fatura de ${brl(valor)} reservada. Ela sai aos poucos das semanas até ${ddmm(c.end)}`);
   }
   else if(f.id==="pote-form"){
     const v=lerPote("a"), err=document.getElementById("a-p-err");
