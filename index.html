@@ -502,8 +502,19 @@ function compute(refDate){
     return {...w, env: distBruto*w.dias/totalDias - descontoPoteSemana(ded.concat(dedFat), w, c), gasto: sum(gw,g=>g.valor)};
   });
   let curIdx = weeks.findIndex(w=>t>=w.ini && t<=w.fim);
+  // sobra passa inteira para a semana seguinte; o que passou é dividido entre as semanas que faltam, pelos dias de cada uma
+  const ate = curIdx===-1 ? weeks.length-1 : curIdx;
+  weeks.forEach(w=>{ w.envBase=w.env; w.ajuste=0; w.recebeu=[]; w.espalhou=0; });
   let carry=0;
-  weeks.forEach((w,i)=>{ w.carryIn = carry; if(curIdx===-1 || i<=curIdx){ carry += w.env - w.gasto; } w.saldo = w.carryIn + w.env - w.gasto; });
+  weeks.forEach((w,i)=>{
+    w.env = w.envBase - w.ajuste; w.carryIn = carry; w.saldo = w.carryIn + w.env - w.gasto;
+    if(i>ate) return;
+    if(w.saldo < -0.005 && i < weeks.length-1){
+      const resto=weeks.slice(i+1), dias=sum(resto, x=>x.dias), D=-w.saldo;
+      resto.forEach(x=>{ const v=D*x.dias/dias; x.ajuste+=v; x.recebeu.push({ini:w.ini, fim:w.fim, valor:v}); });
+      w.espalhou=D; carry=0;
+    } else carry = w.saldo;
+  });
   const proprio = sum(gastos.filter(g=>g.origem==="proprio"),g=>g.valor);
   const cartao = sum(gastos.filter(g=>g.origem==="cartao"),g=>g.valor);
   const terc = {};
@@ -541,7 +552,9 @@ function renderSemana(){
     const rest = disp - w.gasto;
     const pct = disp>0 ? Math.min(100, w.gasto/disp*100) : (w.gasto>0?100:0);
     const over = rest < -0.005;
-    const carryTxt = Math.abs(w.carryIn)<0.005 ? "" : w.carryIn>0 ? ` · inclui <b>${brl(w.carryIn)}</b> que sobrou` : ` · já desconta <b>${brl(-w.carryIn)}</b> que passou`;
+    const carryTxt = w.carryIn>0.005 ? ` · inclui <b>${brl(w.carryIn)}</b> que sobrou` : "";
+    const notaEsp = w.recebeu.map(x=>`O que passou na semana de ${ddmm(x.ini)} a ${ddmm(x.fim)} foi dividido entre as próximas semanas. Nesta saíram ${brl(x.valor)}.`).join(" ");
+    const ultima = r.curIdx===r.weeks.length-1;
     // guia por dia, pelo padrão real
     const restDays=[]; let d=t; while(d<=w.fim){ restDays.push(d); d=addDays(d,1); }
     const wts = restDays.map(x=> pat.enough ? Math.max(pat.avg[dow(x)], 0.01) : 1);
@@ -550,9 +563,10 @@ function renderSemana(){
     html += `<section class="env" aria-label="Dinheiro da semana">
       <div class="label">Dinheiro da semana · ${ddmm(w.ini)} a ${ddmm(w.fim)}</div>
       <div><div class="big num ${over?"over":""}">${over? "−"+brl(-rest) : brl(rest)}</div>
-      <div class="sub">${over ? "passou do dinheiro da semana. A diferença sai da semana que vem." : `ainda dá pra gastar até ${w.fim===r.c.end && dow(w.fim)!==6 ? "o fim do ciclo" : "domingo"}`}</div></div>
+      <div class="sub">${over ? (ultima ? "passou do dinheiro da semana. É a última semana do ciclo." : "passou do dinheiro da semana. A diferença vai ser dividida entre as próximas semanas.") : `ainda dá pra gastar até ${w.fim===r.c.end && dow(w.fim)!==6 ? "o fim do ciclo" : "domingo"}`}</div></div>
       <div class="bar ${over?"over":""}"><i style="width:${pct.toFixed(1)}%"></i></div>
       <div class="rows num"><span>Gasto <b>${brl(w.gasto)}</b> de <b>${brl(disp)}</b></span><span>Da semana <b>${brl(w.env)}</b>${carryTxt}</span></div>
+      ${notaEsp?`<div class="sub small">${notaEsp}</div>`:""}
       ${!over && rest>0.005 ? `<div><div class="label" style="margin-bottom:6px">Sugestão por dia${pat.enough?", pelo seu jeito de gastar":""}</div><div class="guide num">${guide.map((g,i)=>`<span class="${i===0?"today":""}">${i===0?"Hoje":DIAS[dow(g.d)]}<b>${brl(g.v)}</b></span>`).join("")}</div></div>` : ""}
     </section>`;
   } else if(r.entradas.length){
@@ -573,9 +587,10 @@ function renderSemana(){
         let st;
         if(r.curIdx===-1 || i>r.curIdx) st = `<span class="pill neutral">A seguir</span>`;
         else if(i===r.curIdx) st = `<span class="pill gold">Esta semana</span>`;
-        else { const s = x.env - x.gasto; st = s>=-0.005 ? `<span class="pill ok">Sobrou ${brl(s)}</span>` : `<span class="pill bad">Passou ${brl(-s)}</span>`; }
-        return `<div class="wk ${i===r.curIdx?"cur":""}"><div class="d">${ddmm(x.ini)} a ${ddmm(x.fim)}</div><div class="v">Para gastar <b>${brl(x.env)}</b></div>${i<=r.curIdx||r.curIdx===-1&&x.gasto>0?`<div class="v">Gasto <b>${brl(x.gasto)}</b></div>`:""}<div>${st}</div></div>`;
+        else { const s = x.saldo; st = s>=-0.005 ? `<span class="pill ok">Sobrou ${brl(s)}</span>` : `<span class="pill bad">Passou ${brl(-s)}</span>`; }
+        return `<div class="wk ${i===r.curIdx?"cur":""}"><div class="d">${ddmm(x.ini)} a ${ddmm(x.fim)}</div><div class="v">Para gastar <b>${brl(x.env)}</b></div>${x.ajuste>0.005?`<div class="v small">já tira ${brl(x.ajuste)} do que passou</div>`:""}${i<=r.curIdx||r.curIdx===-1&&x.gasto>0?`<div class="v">Gasto <b>${brl(x.gasto)}</b></div>`:""}<div>${st}</div></div>`;
       }).join("")}</div>
+      ${r.weeks.filter(x=>x.espalhou>0.005).map(x=>`<p class="hint" style="margin:0"><b>O que passou na semana de ${ddmm(x.ini)} a ${ddmm(x.fim)} (${brl(x.espalhou)}) foi dividido entre as próximas semanas</b>, de acordo com os dias de cada uma.</p>`).join("")}
       <p class="hint" style="margin:0">Gastos no seu dinheiro: ${brl(r.proprio)} · no seu cartão: ${brl(r.cartao)}. Os dois saem do dinheiro da semana, porque a fatura do seu cartão é paga com o seu dinheiro.</p>
     </section>`;
   }
@@ -909,7 +924,7 @@ function renderInicio(){
     <li><div><b>O dinheiro entra e começa o seu ciclo</b><p>Bolsa, mesada, salário. O ciclo vai do dia em que o dinheiro cai até a véspera desse dia no mês seguinte, e não do dia 1 ao 30.</p></div></li>
     <li><div><b>Uma parte fica de fora</b><p>Logo de cara saem os gastos fixos (aluguel, academia, assinaturas), o que você quer guardar e uma reserva para imprevistos, como farmácia ou um conserto.</p></div></li>
     <li><div><b>O resto vira o dinheiro de cada semana</b><p>É como separar em envelopes, um para cada semana, de segunda a domingo. Você só precisa olhar para o da semana atual.</p></div></li>
-    <li><div><b>O que sobra passa para a semana seguinte</b><p>Sobrou? Soma na próxima. Passou? A diferença sai da próxima. Nada se perde no caminho.</p></div></li>
+    <li><div><b>O que sobra passa para a semana seguinte</b><p>Sobrou? Soma na próxima. Passou? A diferença é dividida entre as semanas que faltam, para não pesar numa só.</p></div></li>
     <li><div><b>O que outra pessoa paga fica à parte</b><p>Se alguém paga coisas por você, no cartão dela ou com um dinheiro que manda só para isso, você registra separado, com um limite combinado se quiser.</p></div></li>
     <li><div><b>Quem namora pode ter um pote do casal</b><p>É opcional: um dinheiro separado só pro que vocês fazem juntos. Ele sai de uma vez quando o seu dinheiro entra e não mexe no dinheiro da semana.</p></div></li>
   </ol>`;
