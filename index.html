@@ -653,6 +653,24 @@ function recAjustesHTML(){
       <button class="btn ghost" type="submit">Adicionar</button>
     </form></div>`;
 }
+/* ---------- nomes já usados: evita criar um nome novo pra mesma coisa ---------- */
+const chaveNome = s => String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/\s+/g," ").trim();
+function nomesUsados(tipo, origem){
+  const lista = tipo==="entrada" ? state.entradas : state.gastos.filter(g=>!g.imp && (origem==="terceiros"||origem==="pote" ? g.origem===origem : g.origem==="proprio"||g.origem==="cartao"));
+  const m=new Map();
+  lista.forEach(x=>{ if(!x.desc) return; const k=chaveNome(x.desc), e=m.get(k)||{n:0, ult:"", nome:x.desc}; e.n++; if(x.data>=e.ult){ e.ult=x.data; e.nome=x.desc; } m.set(k,e); });
+  return [...m.values()].sort((a,b)=>b.n-a.n || (a.ult<b.ult?1:-1)).slice(0,8).map(e=>e.nome);
+}
+function nomeCanonico(txt, lista){
+  const k=chaveNome(txt); if(!k) return txt; let melhor=null;
+  lista.forEach(x=>{ if(x.nome && chaveNome(x.nome)===k && (!melhor || x.data>melhor.data)) melhor=x; });
+  return melhor ? melhor.nome : txt;
+}
+function nomesChips(tipo){
+  const l=nomesUsados(tipo, formOrigem); if(!l.length) return "";
+  return `<div class="chips" role="group" aria-label="Nomes que você já usou">${l.map(n=>`<button type="button" data-nome="${esc(n)}">${esc(n)}</button>`).join("")}</div>
+    <span class="hint">Toque num nome que você já usou. Se escrever um nome que já existe, o app usa o mesmo do histórico.</span>`;
+}
 /* ---------- gastos de sempre ---------- */
 function frequentes(){
   const lim=addDays(today(),-60), m=new Map();
@@ -813,10 +831,10 @@ function renderRegistrar(){
     ${seg}
     <div class="field"><label for="f-valor">Valor</label><div class="money"><span>R$</span><input id="f-valor" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div></div>
     <div class="field"><label for="f-desc">${g?"Com o quê?":"De onde veio?"}</label><input id="f-desc" type="text" list="dl-desc" placeholder="${g?(formModo==="total"?"Ex.: gastos da semana, lanches":"Ex.: lanche, Uber, mercado"):"Ex.: bolsa, mesada, freela"}" autocomplete="off">
-      <datalist id="dl-desc">${(g?descs:["Bolsa","Mesada","Pix da família","Salário","Freela"]).map(d=>`<option value="${esc(d)}">`).join("")}</datalist></div>
+      <datalist id="dl-desc">${(g?descs:["Bolsa","Mesada","Pix da família","Salário","Freela"]).map(d=>`<option value="${esc(d)}">`).join("")}</datalist>${nomesChips(g?"gasto":"entrada")}</div>
     ${g?`<div class="field"><label id="lb-origem">Pago com</label><div class="chips" role="group" aria-labelledby="lb-origem">${Object.entries(ORIGENS).filter(([k])=>k!=="pote"||casalAtivo()).map(([k,v])=>`<button type="button" data-origem="${k}" aria-pressed="${formOrigem===k}">${v}</button>`).join("")}</div>
       <span class="hint">${formOrigem==="pote"?"Gasto de vocês dois, como comida, cinema, passeio ou delivery. Sai do pote do casal, não do seu dinheiro da semana.":formOrigem==="terceiros"?"Quando alguém pagou por você: o cartão dos pais, um Pix que veio só para isso, um empréstimo. Fica separado e não sai do seu dinheiro da semana.":formOrigem==="cartao"?"Sai do dinheiro da semana agora, porque a fatura vai ser paga com o seu dinheiro. Se preferir, não registre as compras e reserve só a fatura, na opção Fatura aqui em cima.":"Pix, débito ou dinheiro vivo."}</span></div>
-      ${formOrigem==="terceiros"?`<div class="field"><label for="f-dono">Quem pagou?</label><input id="f-dono" type="text" list="dl-dono" placeholder="Ex.: Pai, Mãe, tia" autocomplete="off"><datalist id="dl-dono">${donos.map(d=>`<option value="${esc(d)}">`).join("")}</datalist></div>`:""}`:""}
+      ${formOrigem==="terceiros"?`<div class="field"><label for="f-dono">Quem pagou?</label><input id="f-dono" type="text" list="dl-dono" placeholder="Ex.: Pai, Mãe, tia" autocomplete="off"><datalist id="dl-dono">${donos.map(d=>`<option value="${esc(d)}">`).join("")}</datalist>${donos.length?`<div class="chips" role="group" aria-label="Quem já pagou por você">${donos.map(d=>`<button type="button" data-dono="${esc(d)}">${esc(d)}</button>`).join("")}</div>`:""}</div>`:""}`:""}
     ${g?`<div class="field"><label id="lb-modo">Foi um gasto só ou o total de vários dias?</label><div class="chips" role="group" aria-labelledby="lb-modo"><button type="button" data-modo="um" aria-pressed="${formModo==="um"}">Um gasto</button><button type="button" data-modo="total" aria-pressed="${formModo==="total"}">Total de vários dias</button></div>
       <span class="hint">${formModo==="total"?"Some tudo o que gastou no período e lance de uma vez. Exemplo: gastei R$ 150 nessa semana.":"Exemplo: um lanche, uma corrida, uma compra."}</span></div>`:""}
     ${g&&formModo==="total"?`<div class="row" style="gap:10px;align-items:flex-start"><div class="field" style="flex:1 1 140px"><label for="f-ini">De</label><input id="f-ini" type="date" value="${inicioSemana()}"></div><div class="field" style="flex:1 1 140px"><label for="f-data">Até</label><input id="f-data" type="date" value="${today()}"></div></div>`
@@ -826,7 +844,6 @@ function renderRegistrar(){
     <div id="f-err" class="err" hidden></div>
     <button class="btn" type="submit">${g?"Registrar gasto":"Registrar entrada"}</button>
     <button type="button" class="btn ghost" data-act="ir-importar">Importar extrato do banco</button>
-    ${g&&formModo==="um"?frequentesHTML():""}
   </form>`;
 }
 
@@ -1058,6 +1075,10 @@ document.querySelector(".tabs").addEventListener("click",e=>{ const b=e.target.c
 app.addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
   if(b.dataset.tabGo){ go(b.dataset.tabGo); return; }
+  if(b.dataset.nome!=null || b.dataset.dono!=null){
+    const el=document.getElementById(b.dataset.nome!=null?"f-desc":"f-dono"); if(el) el.value = b.dataset.nome!=null ? b.dataset.nome : b.dataset.dono;
+    b.parentElement.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", String(x===b))); return;
+  }
   const grp=b.closest("[data-grupo]");
   if(grp){ grp.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", String(x===b))); updatePreview(); updatePotAjustes(); return; }
   if(b.dataset.namora){
@@ -1156,13 +1177,13 @@ app.addEventListener("submit",e=>{
   if(f.id==="f"){
     const err=document.getElementById("f-err");
     const valor=parseMoney(document.getElementById("f-valor").value);
-    const desc=document.getElementById("f-desc").value.trim();
+    const desc=nomeCanonico(document.getElementById("f-desc").value.trim(), (formTipo==="gasto"?state.gastos:state.entradas).map(x=>({nome:x.desc, data:x.data})));
     let data=document.getElementById("f-data").value || today();
     let ini = formTipo==="gasto" && formModo==="total" ? (document.getElementById("f-ini").value||data) : "";
     if(ini && ini>data){ const x=ini; ini=data; data=x; }
     if(!(valor>0)){ err.textContent="Digite um valor maior que zero, por exemplo 12,50."; err.hidden=false; document.getElementById("f-valor").focus(); return; }
     let dono="";
-    if(formTipo==="gasto" && formOrigem==="terceiros"){ dono=document.getElementById("f-dono").value.trim(); if(!dono){ err.textContent="Diga quem pagou, por exemplo Pai."; err.hidden=false; document.getElementById("f-dono").focus(); return; } }
+    if(formTipo==="gasto" && formOrigem==="terceiros"){ dono=nomeCanonico(document.getElementById("f-dono").value.trim(), state.gastos.filter(x=>x.dono).map(x=>({nome:x.dono, data:x.data})).concat(Object.keys(state.tetos||{}).map(k=>({nome:k, data:""})))); if(!dono){ err.textContent="Diga quem pagou, por exemplo Pai."; err.hidden=false; document.getElementById("f-dono").focus(); return; } }
     leaveExample();
     const antes = formTipo==="gasto" && formOrigem==="pote" ? estadoPote() : null;
     if(formTipo==="gasto") state.gastos.push({id:uid(), data, valor, desc, origem:formOrigem, ...(dono?{dono}:{}), ...(ini&&ini<data?{ini}:{})});
