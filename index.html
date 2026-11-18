@@ -178,6 +178,9 @@ textarea{min-height:120px;font-size:13px;font-family:ui-monospace,Menlo,monospac
 .fat-row .fixo{flex:1;min-width:0}
 .fixo .n small.st-open{color:var(--ink);font-weight:600}
 .sep{border:0;border-top:1px solid var(--line);margin:4px 0;width:100%}
+.env .perdia{font-size:15px;font-weight:600;color:var(--on-mil);margin-top:6px}
+.env .perdia.neg{color:#FFB3A8}
+.neg{color:var(--bad)}
 .toast-act{border:0;background:transparent;color:inherit;font-weight:800;text-decoration:underline;margin-left:10px;padding:2px 4px}
 .freq b{font-weight:700;margin-left:4px}
 .imp-list{display:flex;flex-direction:column;gap:8px}
@@ -409,6 +412,21 @@ function pecas(g){
 }
 const gastosDia = () => state.gastos.flatMap(pecas);
 
+/* ---------- dinheiro do dia: o que sobra no ciclo dividido pelos dias que faltam ---------- */
+function calcDia(){
+  const cfg=state.config, t=today(), c=cycleOf(t,cfg.diaInicio);
+  const E=sum(state.entradas.filter(e=>e.data>=c.start && e.data<=t), e=>e.valor);
+  const fixos=sum(state.fixos||[], f=>f.valor), faturas=sum((state.faturas||[]).filter(f=>f.venc>=c.start && f.venc<=c.end), f=>f.valor);
+  const pote=sum(deducoesPote(c), d=>d.valor), guardar=cfg.guardar||0, margem=cfg.margem||0;
+  const gs=gastosDia().filter(g=>contaNoEnvelope(g) && g.data>=c.start && g.data<=c.end);
+  const gastosAntes=sum(gs.filter(g=>g.data<t), g=>g.valor), gastosHoje=sum(gs.filter(g=>g.data===t), g=>g.valor);
+  const resto=E-guardar-fixos-faturas-margem-pote-gastosAntes, dias=daysIncl(t,c.end), porDia=resto/dias;
+  const dom=addDays(t,6-dow(t)), fimSem=dom<c.end?dom:c.end, diasSem=daysIncl(t,fimSem), pode=porDia*diasSem-gastosHoje;
+  const seg=addDays(t,-dow(t)), iniSem=seg>c.start?seg:c.start, gastoSemana=sum(gs.filter(g=>g.data>=iniSem && g.data<=t), g=>g.valor);
+  const weeks=weeksOf(c).map(w=>({...w, gasto:sum(gs.filter(g=>g.data>=w.ini && g.data<=w.fim), g=>g.valor), atual:t>=w.ini && t<=w.fim, passada:w.fim<t, previsto:porDia*w.dias}));
+  return {c, t, E, guardar, margem, fixos, faturas, pote, gastosAntes, gastosHoje, resto, dias, porDia, fimSem, diasSem, pode, iniSem, gastoSemana, weeks,
+    proprio:sum(gs.filter(g=>g.origem==="proprio"), g=>g.valor), cartao:sum(gs.filter(g=>g.origem==="cartao"), g=>g.valor)};
+}
 /* ---------- pote do casal ---------- */
 const casalAtivo = () => !!(state.casal && state.casal.ativo);
 const amor = () => (state.casal && state.casal.apelido) || "seu amor";
@@ -566,52 +584,46 @@ function renderSemana(){
     html += `<div class="card section"><h2>Comece registrando o que entrou</h2><p class="muted small" style="margin:0">Bolsa, mesada, salário, Pix da família. O painel separa uma parte desse valor para cada semana, de segunda a domingo, a partir do dia ${state.config.diaInicio}.</p><div><button class="btn" type="button" data-act="nova-entrada">Registrar entrada</button></div></div>`;
   }
 
-  const w = r.weeks[r.curIdx];
-  if(w){
-    const disp = w.carryIn + w.env;
-    const rest = disp - w.gasto;
-    const pct = disp>0 ? Math.min(100, w.gasto/disp*100) : (w.gasto>0?100:0);
-    const over = rest < -0.005;
-    const carryTxt = w.carryIn>0.005 ? ` · inclui <b>${brl(w.carryIn)}</b> que sobrou` : "";
-    const notaEsp = w.recebeu.map(x=>`O que passou na semana de ${ddmm(x.ini)} a ${ddmm(x.fim)} foi dividido entre as próximas semanas. Nesta saíram ${brl(x.valor)}.`).join(" ");
-    const ultima = r.curIdx===r.weeks.length-1;
-    // guia por dia, pelo padrão real
-    const restDays=[]; let d=t; while(d<=w.fim){ restDays.push(d); d=addDays(d,1); }
-    const wts = restDays.map(x=> pat.enough ? Math.max(pat.avg[dow(x)], 0.01) : 1);
-    const wsum = wts.reduce((a,b)=>a+b,0);
-    const guide = restDays.map((x,i)=>({d:x, v: Math.max(0,rest)*wts[i]/wsum}));
+  const k = calcDia();
+  if(r.entradas.length){
+    const neg=k.pode<-0.005, cicloNeg=k.resto<-0.005, ate = k.fimSem===k.c.end && dow(k.fimSem)!==6 ? "o fim do ciclo" : "domingo";
+    const base=k.porDia*k.diasSem, pct = base>0 ? Math.min(100, k.gastosHoje/base*100) : (k.gastosHoje>0?100:0);
+    // sugestão por dia: o que pode gastar até domingo, dividido pelos dias que faltam na semana, pelo jeito de gastar
+    const restDays=[]; let d=t; while(d<=k.fimSem){ restDays.push(d); d=addDays(d,1); }
+    const wts = restDays.map(x=> pat.enough ? Math.max(pat.avg[dow(x)], 0.01) : 1), wsum = wts.reduce((s,v)=>s+v,0);
+    const guide = restDays.map((x,i)=>({d:x, v: Math.max(0,k.pode)*wts[i]/wsum}));
+    const sinal = v => v<-0.005 ? "−"+brl(-v) : brl(v);
     html += `<section class="env" aria-label="Dinheiro da semana">
-      <div class="label">Dinheiro da semana · ${ddmm(w.ini)} a ${ddmm(w.fim)}</div>
-      <div><div class="big num ${over?"over":""}">${over? "−"+brl(-rest) : brl(rest)}</div>
-      <div class="sub">${over ? (ultima ? "passou do dinheiro da semana. É a última semana do ciclo." : "passou do dinheiro da semana. A diferença vai ser dividida entre as próximas semanas.") : `ainda dá pra gastar até ${w.fim===r.c.end && dow(w.fim)!==6 ? "o fim do ciclo" : "domingo"}`}</div></div>
-      <div class="bar ${over?"over":""}"><i style="width:${pct.toFixed(1)}%"></i></div>
-      <div class="rows num"><span>Gasto <b>${brl(w.gasto)}</b> de <b>${brl(disp)}</b></span><span>Da semana <b>${brl(w.env)}</b>${carryTxt}</span></div>
-      ${notaEsp?`<div class="sub small">${notaEsp}</div>`:""}
-      ${!over && rest>0.005 ? `<div><div class="label" style="margin-bottom:6px">Sugestão por dia${pat.enough?", pelo seu jeito de gastar":""}</div><div class="guide num">${guide.map((g,i)=>`<span class="${i===0?"today":""}">${i===0?"Hoje":DIAS[dow(g.d)]}<b>${brl(g.v)}</b></span>`).join("")}</div></div>` : ""}
+      <div class="label">Dinheiro da semana · ${ddmm(k.iniSem)} a ${ddmm(k.fimSem)}</div>
+      <div><div class="big num ${neg?"over":""}">${sinal(k.pode)}</div>
+      <div class="sub">${neg ? (cicloNeg ? "o ciclo está no negativo: já saiu mais do que entrou" : `passou do que dá pra gastar até ${ate}`) : `pode gastar até ${ate}`}</div>
+      <div class="perdia num ${k.porDia<-0.005?"neg":""}">${sinal(k.porDia)} por dia</div></div>
+      <div class="bar ${neg?"over":""}"><i style="width:${pct.toFixed(1)}%"></i></div>
+      <div class="rows num"><span>Gastei hoje <b>${brl(k.gastosHoje)}</b></span><span>Já gastei na semana <b>${brl(k.gastoSemana)}</b></span></div>
+      <div class="sub small">Recalculado todo dia: o que entra e o que passa se divide pelos dias que faltam.</div>
+      ${!neg && k.pode>0.005 ? `<div><div class="label" style="margin-bottom:6px">Sugestão por dia${pat.enough?", pelo seu jeito de gastar":""}</div><div class="guide num">${guide.map((g,i)=>`<span class="${i===0?"today":""}">${i===0?"Hoje":DIAS[dow(g.d)]}<b>${brl(g.v)}</b></span>`).join("")}</div></div>` : ""}
     </section>`;
-  } else if(r.entradas.length){
-    html += `<div class="card muted">Hoje está fora do ciclo atual.</div>`;
   }
 
   if(r.entradas.length){
     html += `<div class="row quick"><button type="button" class="btn" data-act="novo-gasto">+ Registrar gasto</button><button type="button" class="btn ghost" data-act="total-semana">Lançar o total da semana</button></div>` + frequentesHTML();
   }
   html += faturasHTML(r, true) + potCardHTML();
-  if(r.totalEnt>0){
-    html += `<section class="section"><div class="sec-head"><h2>Este ciclo</h2><span class="small muted num">entrou ${brl(r.totalEnt)}</span></div>
-      ${(()=>{ const tl=[["Para as semanas",r.dist],["Guardar",state.config.guardar||0],["Reserva",r.margem],["Gastos fixos",r.totalFixos]];
-        if(r.totalPote>0.005) tl.push(["Pote do casal",r.totalPote]); if(r.totalFaturas>0.005) tl.push(["Faturas",r.totalFaturas]);
-        return `<div class="split num${tl.length%2?" odd":""}">`+tl.map(([l,v])=>`<div><span class="label">${l}</span><b>${brl(v)}</b></div>`).join(""); })()}
-      </div>
-      <div class="weeks num">${r.weeks.map((x,i)=>{
-        let st;
-        if(r.curIdx===-1 || i>r.curIdx) st = `<span class="pill neutral">A seguir</span>`;
-        else if(i===r.curIdx) st = `<span class="pill gold">Esta semana</span>`;
-        else { const s = x.saldo; st = s>=-0.005 ? `<span class="pill ok">Sobrou ${brl(s)}</span>` : `<span class="pill bad">Passou ${brl(-s)}</span>`; }
-        return `<div class="wk ${i===r.curIdx?"cur":""}"><div class="d">${ddmm(x.ini)} a ${ddmm(x.fim)}</div><div class="v">Para gastar <b>${brl(x.env)}</b></div>${x.ajuste>0.005?`<div class="v small">já tira ${brl(x.ajuste)} do que passou</div>`:""}${i<=r.curIdx||r.curIdx===-1&&x.gasto>0?`<div class="v">Gasto <b>${brl(x.gasto)}</b></div>`:""}<div>${st}</div></div>`;
+  if(k.E>0){
+    const sinal = v => v<-0.005 ? "−"+brl(-v) : brl(v);
+    const tl=[[`Sobrava no início de hoje, para ${k.dias} ${k.dias===1?"dia":"dias"}`, k.resto],["Guardar",k.guardar],["Reserva",k.margem],["Gastos fixos",k.fixos]];
+    if(k.pote>0.005) tl.push(["Pote do casal",k.pote]); if(k.faturas>0.005) tl.push(["Faturas",k.faturas]); tl.push(["Gasto antes de hoje",k.gastosAntes]);
+    html += `<section class="section"><div class="sec-head"><h2>Este ciclo</h2><span class="small muted num">entrou ${brl(k.E)}</span></div>
+      <div class="split num${tl.length%2?" odd":""}">${tl.map(([l,v],i)=>`<div><span class="label">${l}</span><b class="${i===0&&v<-0.005?"neg":""}">${i===0?sinal(v):brl(v)}</b></div>`).join("")}</div>
+      <p class="hint" style="margin:0">O que sobra é o que entrou menos guardar, reserva, fixos${k.pote>0.005?", pote":""}${k.faturas>0.005?", faturas":""} e o que você gastou antes de hoje. Dividido pelos dias que faltam, dá ${sinal(k.porDia)} por dia.</p>
+      <div class="weeks num">${k.weeks.map(x=>{
+        const st = x.atual ? `<span class="pill gold">Esta semana</span>` : x.passada ? `<span class="pill neutral">Encerrada</span>` : `<span class="pill neutral">A seguir</span>`;
+        const corpo = x.passada ? `<div class="v">Gasto <b>${brl(x.gasto)}</b></div><div class="v small">média de ${brl(x.gasto/x.dias)} por dia</div>`
+          : x.atual ? `<div class="v">Gasto <b>${brl(x.gasto)}</b></div><div class="v">Pode gastar <b class="${k.pode<-0.005?"neg":""}">${sinal(k.pode)}</b></div>`
+          : `<div class="v">Previsto <b class="${x.previsto<-0.005?"neg":""}">${sinal(x.previsto)}</b></div><div class="v small">no ritmo de ${sinal(k.porDia)} por dia</div>`;
+        return `<div class="wk ${x.atual?"cur":""}"><div class="d">${ddmm(x.ini)} a ${ddmm(x.fim)}</div>${corpo}<div>${st}</div></div>`;
       }).join("")}</div>
-      ${r.weeks.filter(x=>x.espalhou>0.005).map(x=>`<p class="hint" style="margin:0"><b>O que passou na semana de ${ddmm(x.ini)} a ${ddmm(x.fim)} (${brl(x.espalhou)}) foi dividido entre as próximas semanas</b>, de acordo com os dias de cada uma.</p>`).join("")}
-      <p class="hint" style="margin:0">Gastos no seu dinheiro: ${brl(r.proprio)} · no seu cartão: ${brl(r.cartao)}. Os dois saem do dinheiro da semana, porque a fatura do seu cartão é paga com o seu dinheiro.</p>
+      <p class="hint" style="margin:0">Gastos no seu dinheiro: ${brl(k.proprio)} · no seu cartão: ${brl(k.cartao)}. Os dois contam como gasto seu, porque a fatura do seu cartão é paga com o seu dinheiro.</p>
     </section>`;
   }
 
@@ -1064,8 +1076,8 @@ function renderInicio(){
   <ol class="how" style="margin:0;padding:0">
     <li><div><b>O dinheiro entra e começa o seu ciclo</b><p>Bolsa, mesada, salário. O ciclo vai do dia em que o dinheiro cai até a véspera desse dia no mês seguinte, e não do dia 1 ao 30.</p></div></li>
     <li><div><b>Uma parte fica de fora</b><p>Logo de cara saem os gastos fixos (aluguel, academia, assinaturas), o que você quer guardar e uma reserva para imprevistos, como farmácia ou um conserto.</p></div></li>
-    <li><div><b>O resto vira o dinheiro de cada semana</b><p>É como separar em envelopes, um para cada semana, de segunda a domingo. Você só precisa olhar para o da semana atual.</p></div></li>
-    <li><div><b>O que sobra passa para a semana seguinte</b><p>Sobrou? Soma na próxima. Passou? A diferença é dividida entre as semanas que faltam, para não pesar numa só.</p></div></li>
+    <li><div><b>O resto é dividido pelos dias que faltam</b><p>Todo dia o app pega o que sobra no ciclo e divide pelos dias que faltam. Você vê quanto pode gastar até domingo e quanto dá por dia.</p></div></li>
+    <li><div><b>Gastou mais ou menos? O app se ajusta sozinho</b><p>Se sobrar, os próximos dias ficam com mais. Se passar, ficam com menos. Dinheiro que entra no meio do ciclo também se espalha pelos dias que faltam.</p></div></li>
     <li><div><b>O que outra pessoa paga fica à parte</b><p>Se alguém paga coisas por você, no cartão dela ou com um dinheiro que manda só para isso, você registra separado, com um limite combinado se quiser.</p></div></li>
     <li><div><b>Quem namora pode ter um pote do casal</b><p>É opcional: um dinheiro separado só pro que vocês fazem juntos. Ele sai de uma vez quando o seu dinheiro entra e não mexe no dinheiro da semana.</p></div></li>
   </ol>`;
@@ -1475,7 +1487,7 @@ window.addEventListener("hashchange",()=>{ if(ATALHOS[location.hash]){ ATALHOS[l
 save();
 render();
 try{ if("serviceWorker" in navigator && window.self===window.top && location.protocol==="https:") navigator.serviceWorker.register("./sw.js").catch(()=>{}); }catch(e){}
-window.__grana = {compute, cycleOf, weeksOf, pattern, estadoPote, frequentes, get state(){return state;}};
+window.__grana = {calcDia, compute, cycleOf, weeksOf, pattern, estadoPote, frequentes, get state(){return state;}};
 })();
 </script>
 
